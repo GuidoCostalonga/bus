@@ -12,6 +12,7 @@ servizio regionale rende disponibile la posizione.
 | `aggregatore_tplfvg.js` | Servizio minimo che raccoglie le posizioni da tutta la rete e le offre alla pagina. |
 | `Avvia_su_Windows.bat` | Avvia tutto con un doppio clic su Windows e apre la pagina nel browser. |
 | `Avvia_su_Mac.command` | Lo stesso, su Mac. |
+| `index.html` | Pagina di ingresso del sito pubblicato: rimanda all'applicazione. |
 
 ## Come si usa
 
@@ -49,6 +50,45 @@ però, la pagina interroga il servizio direttamente, con ventiquattro fermate pe
 giro invece delle novanta dell'aggregatore: la copertura è molto più stretta e
 cresce lentamente. Non è detto inoltre che il browser consenta quelle chiamate
 dirette, cosa che non è stato possibile verificare.
+
+## Pubblicazione in rete
+
+Il sito si pubblica con GitHub Pages: repository, `Settings`, `Pages`, poi come
+sorgente il ramo `main` e la cartella `/ (root)`. L'indirizzo diventa
+`https://guidocostalonga.github.io/bus/`. Perché sia raggiungibile da chiunque,
+il repository deve essere pubblico: `Settings`, in fondo, `Change visibility`.
+
+### Il limite da conoscere prima di pubblicare
+
+GitHub Pages serve soltanto file statici: **non può eseguire l'aggregatore**,
+che ha bisogno di Node. Il sito pubblicato ricade quindi sulle richieste dirette
+al servizio TPL FVG, fatte dal browser di chi visita la pagina. Due conseguenze:
+
+1. Funziona solo se il servizio TPL FVG consente le chiamate da altre origini.
+   Non è stato possibile verificarlo, perché il servizio era fuori uso durante
+   lo sviluppo. Se non le consente, il sito pubblicato mostrerà la mappa ma
+   nessun autobus.
+2. La copertura resta quella ridotta: ventiquattro fermate per giro invece di
+   novanta, e il carico sul servizio pubblico si moltiplica per ogni visitatore.
+
+### Come avere la copertura piena anche in rete
+
+Serve un aggregatore ospitato su un servizio che esegua Node. Una volta attivo,
+si scrive il suo indirizzo in cima ad `autobus_fvg.html`:
+
+```js
+const AGGREGATORE_REMOTO = "https://ilmioaggregatore.esempio/api/mezzi";
+```
+
+Per una prova rapida si può indicarlo anche nell'indirizzo della pagina, senza
+modificare il file:
+
+```
+https://guidocostalonga.github.io/bus/?aggregatore=https://ilmioaggregatore.esempio/api/mezzi
+```
+
+Sono ammessi solo indirizzi cifrati. L'aggregatore invia già l'intestazione che
+autorizza le chiamate da altre origini, quindi non serve altro.
 
 ## Perché serve un aggregatore
 

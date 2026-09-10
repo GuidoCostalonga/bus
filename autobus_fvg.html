@@ -387,8 +387,30 @@ const RITENTA_MS      = [5000, 15000, 40000, 90000];   // attese dopo un errore
 const DIRETTA_PER_GIRO  = 24;
 const DIRETTA_PARALLELE = 4;
 
-// Indirizzi dell'aggregatore locale, provati nell'ordine.
-const AGGREGATORI = ["./api/mezzi", "http://127.0.0.1:8080/api/mezzi"];
+// Aggregatore ospitato in rete, per il sito pubblicato. Da compilare una volta
+// sola con l'indirizzo del proprio aggregatore, per esempio
+// "https://miosito.esempio/api/mezzi". Lasciato vuoto, la pagina interroga il
+// servizio TPL FVG direttamente, con copertura molto piu' stretta.
+const AGGREGATORE_REMOTO = "";
+
+// Si puo' indicare anche dall'indirizzo della pagina, con ?aggregatore=...
+// Sono ammessi solo indirizzi cifrati, per non mescolare traffico in chiaro.
+function aggregatoreDaIndirizzo() {
+  try {
+    const v = new URLSearchParams(location.search).get("aggregatore");
+    if (v && /^https:\/\//i.test(v)) return v;
+    if (v) console.warn("[fonte] indirizzo dell'aggregatore ignorato, non cifrato: " + v);
+  } catch (e) { /* indirizzo non leggibile */ }
+  return null;
+}
+
+// Indirizzi provati nell'ordine: quello indicato, poi quelli locali.
+const AGGREGATORI = [
+  aggregatoreDaIndirizzo(),
+  AGGREGATORE_REMOTO,
+  "./api/mezzi",
+  "http://127.0.0.1:8080/api/mezzi"
+].filter(Boolean);
 
 // Servizio ufficiale delle corse monitorate a una fermata.
 const BASE_TEMPO_REALE = "https://realtime.tplfvg.it/API/v1.0/polemonitor/mrcruns";
