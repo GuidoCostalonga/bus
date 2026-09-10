@@ -1,0 +1,1324 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Autobus in tempo reale in Friuli Venezia Giulia</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+<style>
+:root{
+  --urbano:#1258c8;      --urbano-scuro:#0c3f92;
+  --extra:#e2680c;       --extra-scuro:#a94b06;
+  --altro:#5b6470;       --altro-scuro:#3d444d;
+  --inchiostro:#131c27;  --tenue:#5d6b7c;
+  --carta:#ffffff;       --fondo:#eef1f5;
+  --bordo:#d5dbe3;       --ombra:0 2px 10px rgba(15,28,45,.13);
+  --ombra-alta:0 8px 30px rgba(15,28,45,.20);
+  --raggio:12px;         --stantio:#8a94a2;
+  --ok:#12805c;          --guasto:#c0392b;   --attesa:#b8770a;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{
+  font:15px/1.45 "Segoe UI",Roboto,-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
+  color:var(--inchiostro); background:var(--fondo);
+  display:flex; flex-direction:column; overflow:hidden;
+  -webkit-text-size-adjust:100%;
+}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:3px solid #1258c8;outline-offset:2px;border-radius:6px}
+
+/* ---------- barra superiore ---------- */
+#barra{
+  flex:0 0 auto; display:flex; align-items:center; gap:10px;
+  padding:8px 12px; background:var(--carta); border-bottom:1px solid var(--bordo);
+  box-shadow:var(--ombra); z-index:1200; position:relative;
+}
+#marchio{display:flex;align-items:center;gap:9px;min-width:0}
+#marchio svg{flex:0 0 auto}
+#titolo{font-weight:700;font-size:15px;letter-spacing:-.2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#sottotitolo{font-size:11.5px;color:var(--tenue);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#spazio{flex:1 1 auto}
+.pill{
+  display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:999px;
+  background:var(--fondo);border:1px solid var(--bordo);font-size:12.5px;font-weight:600;white-space:nowrap;
+}
+.pill b{font-size:14px}
+#spia{width:9px;height:9px;border-radius:50%;background:var(--stantio);flex:0 0 auto}
+#spia.ok{background:var(--ok)} #spia.attesa{background:var(--attesa)} #spia.guasto{background:var(--guasto)}
+.bottone{
+  display:inline-flex;align-items:center;justify-content:center;gap:7px;
+  min-height:40px;padding:8px 14px;border-radius:10px;border:1px solid var(--bordo);
+  background:var(--carta);font-size:13.5px;font-weight:600;transition:background .15s,border-color .15s;
+}
+.bottone:hover{background:#f4f7fb;border-color:#b9c3cf}
+.bottone.primario{background:var(--urbano);border-color:var(--urbano);color:#fff}
+.bottone.primario:hover{background:var(--urbano-scuro);border-color:var(--urbano-scuro)}
+.bottone[aria-pressed="true"]{background:var(--urbano);border-color:var(--urbano);color:#fff}
+.solo-icona{min-width:40px;padding:8px}
+
+/* ---------- corpo ---------- */
+#corpo{flex:1 1 auto;display:flex;min-height:0;position:relative}
+#pannello{
+  flex:0 0 302px; background:var(--carta); border-right:1px solid var(--bordo);
+  display:flex; flex-direction:column; min-height:0; z-index:1100;
+}
+#pannello .sezione{padding:12px 14px;border-bottom:1px solid var(--bordo)}
+#pannello h2{margin:0 0 9px;font-size:11px;text-transform:uppercase;letter-spacing:.9px;color:var(--tenue)}
+.filtri{display:flex;gap:8px}
+.filtro{
+  flex:1;display:flex;align-items:center;justify-content:center;gap:7px;
+  min-height:42px;border-radius:10px;border:1.5px solid var(--bordo);background:var(--carta);
+  font-size:13.5px;font-weight:600;transition:all .15s;
+}
+.filtro .bollo{width:11px;height:11px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.25)}
+.filtro[data-tipo="urbano"] .bollo{background:var(--urbano)}
+.filtro[data-tipo="extraurbano"] .bollo{background:var(--extra)}
+.filtro[aria-pressed="true"][data-tipo="urbano"]{border-color:var(--urbano);background:#e8f0fd;color:var(--urbano-scuro)}
+.filtro[aria-pressed="true"][data-tipo="extraurbano"]{border-color:var(--extra);background:#fdf0e4;color:var(--extra-scuro)}
+.filtro[aria-pressed="false"]{opacity:.5}
+.campo{position:relative;margin-bottom:8px}
+.campo:last-child{margin-bottom:0}
+.campo input{
+  width:100%;min-height:42px;padding:8px 34px 8px 12px;border-radius:10px;
+  border:1.5px solid var(--bordo);background:var(--carta);
+}
+.campo input:focus{border-color:var(--urbano);outline:none}
+.pulisci{
+  position:absolute;right:5px;top:50%;transform:translateY(-50%);
+  width:30px;height:30px;border:0;background:transparent;border-radius:50%;
+  color:var(--tenue);font-size:17px;line-height:1;display:none;
+}
+.campo.pieno .pulisci{display:block}
+.pulisci:hover{background:var(--fondo)}
+#suggerimenti{
+  list-style:none;margin:6px 0 0;padding:0;max-height:190px;overflow-y:auto;
+  border:1px solid var(--bordo);border-radius:10px;display:none;background:var(--carta);
+}
+#suggerimenti.aperto{display:block}
+#suggerimenti li button{
+  width:100%;text-align:left;padding:9px 11px;border:0;background:transparent;
+  border-bottom:1px solid var(--fondo);font-size:13px;line-height:1.3;
+}
+#suggerimenti li:last-child button{border-bottom:0}
+#suggerimenti li button:hover,#suggerimenti li button:focus{background:#eaf1fd}
+#suggerimenti .luogo{font-weight:600}
+#suggerimenti .dettaglio{color:var(--tenue);font-size:11.5px}
+
+#elenco-zona{flex:1 1 auto;overflow-y:auto;min-height:0}
+#elenco-zona .sezione{border-bottom:0}
+#elenco{list-style:none;margin:0;padding:0}
+#elenco li{margin-bottom:6px}
+.voce{
+  width:100%;display:flex;align-items:center;gap:9px;text-align:left;
+  padding:8px 10px;border-radius:10px;border:1px solid var(--bordo);background:var(--carta);
+  min-height:44px;
+}
+.voce:hover{background:#f4f7fb}
+.voce[aria-current="true"]{border-color:var(--urbano);background:#eaf1fd}
+.voce .sigla{
+  flex:0 0 auto;min-width:38px;padding:3px 7px;border-radius:7px;text-align:center;
+  font-weight:800;font-size:12.5px;color:#fff;letter-spacing:-.2px;
+}
+.voce .sigla.urbano{background:var(--urbano)} .voce .sigla.extraurbano{background:var(--extra)}
+.voce .sigla.altro{background:var(--altro)}
+.voce .testo{min-width:0;flex:1}
+.voce .dove{display:block;font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.voce .quando{display:block;font-size:11.5px;color:var(--tenue);margin-top:1px}
+.voce.stantia{opacity:.62}
+#vuoto{padding:16px 14px;color:var(--tenue);font-size:13px;text-align:center;line-height:1.5}
+
+/* ---------- mappa ---------- */
+#mappa-zona{flex:1 1 auto;position:relative;min-width:0}
+#mappa{position:absolute;inset:0;background:#dfe6ee}
+#avviso{
+  position:absolute;left:50%;top:12px;transform:translateX(-50%);z-index:1000;
+  max-width:calc(100% - 24px);padding:9px 15px;border-radius:999px;
+  background:rgba(19,28,39,.93);color:#fff;font-size:13px;font-weight:600;
+  box-shadow:var(--ombra-alta);display:none;text-align:center;
+}
+#avviso.visibile{display:block}
+#comandi-mappa{position:absolute;right:10px;bottom:26px;z-index:1000;display:flex;flex-direction:column;gap:8px}
+#comandi-mappa .bottone{box-shadow:var(--ombra);background:var(--carta)}
+
+/* ---------- puntini, bandierine, raggruppamenti ---------- */
+.bandierina-guscio{background:none!important;border:0!important}
+.bandierina{
+  position:relative; transform:translate(-50%,-100%);
+  display:inline-block; padding:2px 6px; border-radius:6px;
+  font-size:11.5px; font-weight:800; letter-spacing:-.2px; line-height:1.25;
+  color:#fff; white-space:nowrap; border:1.5px solid rgba(255,255,255,.92);
+  box-shadow:0 1px 4px rgba(15,28,45,.42); cursor:pointer;
+  font-variant-numeric:tabular-nums;
+}
+.bandierina::after{                 /* asticella verso il puntino */
+  content:""; position:absolute; left:50%; top:100%; transform:translateX(-50%);
+  width:2px; height:7px; background:inherit; border-radius:0 0 1px 1px;
+  box-shadow:0 0 0 1px rgba(255,255,255,.55);
+}
+.bandierina.urbano{background:var(--urbano)}
+.bandierina.extraurbano{background:var(--extra)}
+.bandierina.altro{background:var(--altro)}
+.bandierina.scelta{
+  border-color:#131c27; box-shadow:0 0 0 2px #fff,0 2px 9px rgba(15,28,45,.5);
+  font-size:12.5px; padding:3px 8px; z-index:5;
+}
+.bandierina.stantia{background:var(--stantio)}
+
+.gruppo-guscio{background:none!important;border:0!important}
+.gruppo{
+  transform:translate(-50%,-50%); display:flex; align-items:center; justify-content:center;
+  border-radius:50%; font-weight:800; color:#fff; cursor:pointer;
+  border:2.5px solid rgba(255,255,255,.95); box-shadow:0 2px 8px rgba(15,28,45,.4);
+  background:var(--urbano); font-variant-numeric:tabular-nums;
+}
+.gruppo.misto{background:linear-gradient(135deg,var(--urbano) 0 50%,var(--extra) 50% 100%)}
+.gruppo.extraurbano{background:var(--extra)}
+.gruppo.p{width:34px;height:34px;font-size:13px}
+.gruppo.m{width:42px;height:42px;font-size:14.5px}
+.gruppo.g{width:52px;height:52px;font-size:16px}
+
+/* ---------- scheda del mezzo ---------- */
+#scheda{
+  position:absolute; right:10px; top:10px; z-index:1100; width:318px; max-width:calc(100% - 20px);
+  background:var(--carta); border-radius:var(--raggio); box-shadow:var(--ombra-alta);
+  border:1px solid var(--bordo); display:none; overflow:hidden;
+}
+#scheda.visibile{display:block}
+#scheda .testa{display:flex;align-items:flex-start;gap:10px;padding:12px 12px 10px;color:#fff}
+#scheda .testa.urbano{background:var(--urbano)} #scheda .testa.extraurbano{background:var(--extra)}
+#scheda .testa.altro{background:var(--altro)}
+#scheda .linea{
+  flex:0 0 auto;min-width:44px;padding:5px 9px;border-radius:9px;background:rgba(255,255,255,.22);
+  border:1.5px solid rgba(255,255,255,.6);font-size:17px;font-weight:800;text-align:center;
+}
+#scheda .verso{flex:1;min-width:0}
+#scheda .verso .etichetta{font-size:11px;text-transform:uppercase;letter-spacing:.7px;opacity:.85}
+#scheda .verso .valore{font-size:14.5px;font-weight:700;line-height:1.3;overflow-wrap:anywhere}
+#chiudi-scheda{
+  flex:0 0 auto;width:32px;height:32px;border-radius:50%;border:0;
+  background:rgba(255,255,255,.2);color:#fff;font-size:18px;line-height:1;
+}
+#chiudi-scheda:hover{background:rgba(255,255,255,.34)}
+#scheda dl{margin:0;padding:10px 12px;display:grid;grid-template-columns:auto 1fr;gap:6px 12px;font-size:13px}
+#scheda dt{color:var(--tenue);font-size:11.5px;text-transform:uppercase;letter-spacing:.5px;padding-top:2px}
+#scheda dd{margin:0;font-weight:600;overflow-wrap:anywhere}
+#scheda .piede{padding:10px 12px;border-top:1px solid var(--bordo);display:flex;gap:8px}
+#scheda .piede .bottone{flex:1}
+#nota-scheda{
+  margin:0;padding:8px 12px;background:#fff8e6;border-top:1px solid #f0dfae;
+  font-size:12px;color:#7a5b06;display:none;
+}
+#nota-scheda.visibile{display:block}
+
+/* ---------- adattamento agli schermi piccoli ---------- */
+#apri-pannello{display:none}
+@media (max-width:820px){
+  #barra{padding:7px 10px;gap:7px}
+  #sottotitolo{display:none}
+  #apri-pannello{display:inline-flex}
+  #pannello{
+    position:absolute; inset:0 auto 0 0; width:min(78vw,318px); flex-basis:auto;
+    transform:translateX(-102%); transition:transform .22s ease; box-shadow:var(--ombra-alta);
+  }
+  #pannello.aperto{transform:none}
+  #velo{position:absolute;inset:0;background:rgba(19,28,39,.4);z-index:1050;display:none}
+  #velo.visibile{display:block}
+  #scheda{
+    right:0;left:0;top:auto;bottom:0;width:auto;max-width:none;
+    border-radius:var(--raggio) var(--raggio) 0 0;border-bottom:0;
+    max-height:58vh;display:none;flex-direction:column;
+  }
+  #scheda.visibile{display:flex}
+  #scheda dl{overflow-y:auto;min-height:0;gap:5px 12px}
+  #scheda .testa,#scheda .piede,#nota-scheda{flex:0 0 auto}
+  #comandi-mappa{bottom:auto;top:10px;right:10px}
+  .etichetta-lunga{display:none}
+  .etichetta-breve{display:inline}
+}
+.etichetta-breve{display:none}
+@media (min-width:821px){ #velo{display:none!important} }
+@media (max-width:620px){
+  /* Lo spazio va ai dati: il nome della pagina resta nella scheda del browser. */
+  #marchio > div{display:none}
+  .pill{padding:4px 9px;font-size:11.5px}
+}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.001ms!important;transition-duration:.001ms!important}
+}
+.solo-lettori{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.leaflet-container{font:inherit}
+.leaflet-control-attribution{font-size:10.5px}
+</style>
+</head>
+<body>
+
+<header id="barra">
+  <button id="apri-pannello" class="bottone solo-icona" aria-label="Apri filtri e ricerca" aria-expanded="false" aria-controls="pannello">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+  </button>
+  <div id="marchio">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <rect x="3.5" y="3" width="17" height="14.5" rx="3" fill="#1258c8"/>
+      <rect x="5.6" y="5.4" width="12.8" height="5.2" rx="1.4" fill="#cfe0fb"/>
+      <circle cx="8" cy="14.4" r="1.5" fill="#cfe0fb"/><circle cx="16" cy="14.4" r="1.5" fill="#cfe0fb"/>
+      <rect x="6" y="17.6" width="3" height="3.4" rx="1.1" fill="#1258c8"/>
+      <rect x="15" y="17.6" width="3" height="3.4" rx="1.1" fill="#1258c8"/>
+    </svg>
+    <div style="min-width:0">
+      <div id="titolo">Autobus in tempo reale</div>
+      <div id="sottotitolo">Friuli Venezia Giulia, rete TPL FVG</div>
+    </div>
+  </div>
+
+  <div id="spazio"></div>
+
+  <div class="pill" title="Mezzi dei quali il servizio ha fornito una posizione valida">
+    <b id="conteggio">0</b><span class="etichetta-lunga">mezzi con posizione disponibile</span><span class="etichetta-breve" aria-hidden="true">mezzi</span><span class="solo-lettori">mezzi con posizione disponibile</span>
+  </div>
+  <div class="pill" id="stato-pill">
+    <span id="spia" aria-hidden="true"></span><span id="stato">In avvio</span>
+  </div>
+  <button id="aggiorna" class="bottone primario" aria-label="Aggiorna ora le posizioni">
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.6"/><path d="M20 4v7h-7"/></svg>
+    <span class="etichetta-lunga">Aggiorna ora</span>
+  </button>
+</header>
+
+<div id="corpo">
+
+  <aside id="pannello" aria-label="Filtri e ricerca">
+    <div class="sezione">
+      <h2>Tipo di servizio</h2>
+      <div class="filtri">
+        <button class="filtro" data-tipo="urbano" aria-pressed="true"><span class="bollo" aria-hidden="true"></span>Urbani</button>
+        <button class="filtro" data-tipo="extraurbano" aria-pressed="true"><span class="bollo" aria-hidden="true"></span>Extraurbani</button>
+      </div>
+    </div>
+
+    <div class="sezione">
+      <h2>Ricerca</h2>
+      <div class="campo" id="campo-linea">
+        <label class="solo-lettori" for="cerca-linea">Cerca una linea</label>
+        <input id="cerca-linea" type="search" placeholder="Linea, per esempio P13 oppure 2" autocomplete="off" enterkeyhint="search">
+        <button class="pulisci" data-svuota="cerca-linea" aria-label="Cancella la ricerca della linea">&times;</button>
+      </div>
+      <div class="campo" id="campo-luogo">
+        <label class="solo-lettori" for="cerca-luogo">Cerca una località oppure una fermata</label>
+        <input id="cerca-luogo" type="search" placeholder="Località oppure fermata" autocomplete="off" enterkeyhint="search"
+               role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="suggerimenti">
+        <button class="pulisci" data-svuota="cerca-luogo" aria-label="Cancella la ricerca del luogo">&times;</button>
+      </div>
+      <ul id="suggerimenti" role="listbox" aria-label="Risultati della ricerca"></ul>
+    </div>
+
+    <div id="elenco-zona">
+      <div class="sezione">
+        <h2>Mezzi visibili sulla mappa (<span id="conteggio-elenco">0</span>)</h2>
+        <ul id="elenco" aria-label="Elenco dei mezzi visibili"></ul>
+        <p id="vuoto">Nessun mezzo da mostrare.</p>
+      </div>
+    </div>
+  </aside>
+
+  <div id="velo" hidden></div>
+
+  <div id="mappa-zona">
+    <div id="mappa" role="application" aria-label="Mappa degli autobus in circolazione"></div>
+
+    <p id="avviso" role="status" aria-live="polite"></p>
+
+    <div id="comandi-mappa">
+      <button id="tutta-regione" class="bottone" aria-label="Mostra tutta la regione">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4 3 6.2v13.6L9 17.6l6 2.2 6-2.2V4l-6 2.2z"/><path d="M9 4v13.6M15 6.2V19.8"/></svg>
+        <span class="etichetta-lunga">Tutta la regione</span>
+      </button>
+      <button id="schermo-intero" class="bottone solo-icona" aria-label="Schermo intero" aria-pressed="false">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M21 16v3a2 2 0 0 1-2 2h-3M8 21H5a2 2 0 0 1-2-2v-3"/></svg>
+      </button>
+    </div>
+
+    <section id="scheda" aria-live="polite" aria-label="Dettaglio del mezzo selezionato">
+      <div class="testa" id="scheda-testa">
+        <div class="linea" id="scheda-linea">&nbsp;</div>
+        <div class="verso">
+          <div class="etichetta">Direzione</div>
+          <div class="valore" id="scheda-destinazione">&nbsp;</div>
+        </div>
+        <button id="chiudi-scheda" aria-label="Chiudi la scheda del mezzo">&times;</button>
+      </div>
+      <dl id="scheda-dati"></dl>
+      <p id="nota-scheda"></p>
+      <div class="piede">
+        <button id="segui" class="bottone" aria-pressed="false">Segui questo autobus</button>
+      </div>
+    </section>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+<script id="dati-rete" type="application/json">{"localita":[["AIELLO DEL FRIULI",45.8741,13.3603,13],["AMARO",46.37106,13.07636,4],["AMPEZZO",46.41656,12.77972,20],["ANDREIS",46.19973,12.61406,5],["ANNONE VENETO",45.7942,12.67532,5],["AQUILEIA",45.76482,13.37147,11],["ARBA",46.15731,12.79682,11],["ARTA TERME",46.47639,13.03037,52],["ARTEGNA",46.23879,13.14806,20],["ATTIMIS",46.19086,13.32752,44],["AURONZO DI CADORE",46.55203,12.43703,2],["AVIANO",46.0775,12.59077,72],["AZZANO DECIMO",45.87899,12.69319,64],["BAGNARIA ARSA",45.86495,13.29747,24],["BARCIS",46.19312,12.55067,8],["BASILIANO",46.01726,13.10578,43],["BELLUNO",46.14496,12.21875,3],["BERTIOLO",45.9469,13.06776,19],["BICINICCO",45.92793,13.24758,15],["BORDANO",46.31854,13.09438,16],["BRUGNERA",45.90468,12.54663,59],["BUDOIA",46.04257,12.53268,10],["BUJA",46.21161,13.11744,50],["BUTTRIO",46.00953,13.33508,20],["CAMINO AL TAGLIAMENTO",45.91952,12.94534,15],["CAMPOFORMIDO",46.02963,13.18777,30],["CAMPOLONGO TAPOGLIANO",45.86659,13.3913,10],["CANEVA",45.97734,12.46062,31],["CAPRIVA DEL FRIULI",45.93923,13.51333,3],["CARLINO",45.79709,13.17961,17],["CASARSA DELLA DELIZIA",45.95214,12.83602,23],["CASSACCO",46.18224,13.18201,35],["CASTELNOVO DEL FRIULI",46.19697,12.90419,15],["CASTIONS DI STRADA",45.90637,13.19938,9],["CAVASSO NUOVO",46.19267,12.7735,10],["CAVAZZO CARNICO",46.35639,13.05558,15],["CERCIVENTO",46.52703,12.9854,15],["CERVIGNANO DEL FRIULI",45.82608,13.33851,31],["CHIONS",45.86401,12.75235,42],["CHIOPRIS-VISCONE",45.92654,13.39524,10],["CHIUSAFORTE",46.40129,13.32886,32],["CIMOLAIS",46.28549,12.44192,4],["CINTO CAOMAGGIORE",45.82913,12.78486,14],["CIVIDALE DEL FRIULI",46.08865,13.43845,70],["CLAUT",46.25929,12.48996,20],["CLAUZETTO",46.22829,12.90916,35],["CODROIPO",45.96028,12.98808,52],["COLLOREDO DI MONTE ALBANO",46.16037,13.11753,35],["COMEGLIANS",46.52117,12.86968,24],["COMELICO SUPERIORE",46.60336,12.49391,22],["CORDENONS",45.98233,12.69797,78],["CORDOVADO",45.84609,12.88202,14],["CORMONS",45.95901,13.47279,21],["CORNO DI ROSAZZO",45.99133,13.4455,22],["COSEANO",46.07964,13.0134,18],["DIGNANO",46.09932,12.9474,18],["DOBERDO' DEL LAGO",45.84309,13.5636,17],["DOGNA",46.44888,13.30669,6],["DOLEGNA DEL COLLIO",46.02759,13.48027,11],["DOMEGGE DI CADORE",46.45697,12.409,10],["DRENCHIA",46.172,13.63704,27],["DUINO-AURISINA",45.76443,13.65785,116],["ENEMONZO",46.41493,12.87944,13],["ERTO E CASSO",46.27321,12.35937,9],["FAEDIS",46.14773,13.35257,46],["FAGAGNA",46.11209,13.0809,26],["FANNA",46.18002,12.74969,8],["FARRA D'ISONZO",45.90464,13.53303,7],["FIUME VENETO",45.92419,12.7369,75],["FIUMICELLO",45.79496,13.41175,12],["FLAIBANO",46.05217,12.95525,7],["FOGLIANO REDIPUGLIA",45.85723,13.48512,10],["FONTANAFREDDA",45.98114,12.55741,50],["FORGARIA NEL FRIULI",46.22098,12.98732,41],["FORNI AVOLTRI",46.58209,12.79395,14],["FORNI DI SOPRA",46.42212,12.57714,12],["FORNI DI SOTTO",46.39571,12.67799,9],["FOSSALTA DI PORTOGRUARO",45.79913,12.89707,3],["FRISANCO",46.21087,12.7152,6],["GAIARINE",45.90315,12.50577,3],["GEMONA DEL FRIULI",46.27655,13.12323,49],["GONARS",45.89376,13.25497,18],["GORIZIA",45.941,13.61065,222],["GRADISCA D'ISONZO",45.88732,13.49067,14],["GRADO",45.68697,13.41517,57],["GRIMACCO",46.15614,13.60788,12],["GRUARO",45.80254,12.81229,4],["LATISANA",45.75154,13.0271,61],["LAUCO",46.43377,12.93169,38],["LESTIZZA",45.97189,13.12129,29],["LIGNANO SABBIADORO",45.67469,13.11416,88],["LIGOSULLO",46.54004,13.07014,2],["LONGARONE",46.25817,12.30479,26],["LORENZAGO DI CADORE",46.47425,12.4764,7],["LOZZO DI CADORE",46.47977,12.43918,4],["LUSEVERA",46.27551,13.27457,32],["MAGNANO IN RIVIERA",46.22513,13.18276,18],["MAJANO",46.18283,13.06487,53],["MALBORGHETTO VALBRUNA",46.50239,13.44792,16],["MANIAGO",46.15052,12.72635,50],["MANZANO",45.9916,13.37618,31],["MARANO LAGUNARE",45.7647,13.16764,1],["MARIANO DEL FRIULI",45.91723,13.46431,10],["MARTIGNACCO",46.08742,13.14933,37],["MEDEA",45.91703,13.42541,4],["MEDUNA DI LIVENZA",45.81255,12.62162,8],["MEDUNO",46.21633,12.77968,22],["MERETO DI TOMBA",46.0476,13.05895,21],["MOGGIO UDINESE",46.4316,13.19398,26],["MOIMACCO",46.09091,13.37855,14],["MONFALCONE",45.80357,13.52937,138],["MONRUPINO",45.71398,13.80646,21],["MONTENARS",46.25828,13.18402,13],["MONTEREALE VALCELLINA",46.13282,12.65842,36],["MORARO",45.92924,13.49693,8],["MORSANO AL TAGLIAMENTO",45.86292,12.93794,21],["MORTEGLIANO",45.94744,13.18982,13],["MORUZZO",46.12149,13.13742,26],["MOSSA",45.93633,13.54998,9],["MOTTA DI LIVENZA",45.78952,12.61145,5],["MUGGIA",45.60005,13.769,156],["MUZZANA DEL TURGNANO",45.82402,13.13303,8],["NIMIS",46.21615,13.28019,34],["Nova Gorica",45.95867,13.64258,23],["OSOPPO",46.24137,13.07864,20],["OVARO",46.4841,12.86473,39],["PAGNACCO",46.11656,13.18121,34],["PALAZZOLO DELLO STELLA",45.8059,13.08524,6],["PALMANOVA",45.90898,13.32051,26],["PALUZZA",46.54119,13.01227,35],["PASIAN DI PRATO",46.0558,13.18417,45],["PASIANO DI PORDENONE",45.8563,12.61278,55],["PAULARO",46.51512,13.1155,31],["PAVIA DI UDINE",45.98213,13.28972,33],["PIEVE DI CADORE",46.4384,12.38151,6],["PINZANO AL TAGLIAMENTO",46.18644,12.9329,33],["POCENIA",45.85312,13.10662,18],["POLCENIGO",46.02554,12.50285,23],["PONTE NELLE ALPI",46.19226,12.28424,6],["PONTEBBA",46.5043,13.28881,31],["PORCIA",45.96245,12.61513,74],["PORDENONE",45.96079,12.65723,282],["PORPETTO",45.8611,13.20687,15],["PORTOGRUARO",45.78391,12.83774,21],["POVOLETTO",46.13073,13.29464,55],["POZZUOLO DEL FRIULI",46.00185,13.21133,39],["PRADAMANO",46.0316,13.30195,12],["PRAMAGGIORE",45.80821,12.72297,6],["PRATA DI PORDENONE",45.87604,12.57732,25],["PRATO CARNICO",46.52011,12.79516,21],["PRAVISDOMINI",45.8193,12.68317,20],["PRECENICCO",45.78962,13.06605,10],["PREMARIACCO",46.05049,13.39773,35],["PREONE",46.39438,12.86595,1],["PREPOTTO",46.06529,13.51415,25],["PULFERO",46.17334,13.47185,36],["RAGOGNA",46.18201,12.98392,28],["RAVASCLETTO",46.52578,12.93033,25],["RAVEO",46.42706,12.88448,5],["REANA DEL ROJALE",46.1536,13.24215,33],["REMANZACCO",46.07813,13.32444,29],["RESIA",46.36913,13.30458,28],["RESIUTTA",46.39365,13.22133,1],["RIGOLATO",46.54882,12.85339,7],["RIVE D'ARCANO",46.12339,13.02587,27],["RIVIGNANO TEOR",45.86368,13.05745,39],["ROMANS D'ISONZO",45.89403,13.43811,15],["RONCHI DEI LEGIONARI",45.82765,13.50404,43],["RONCHIS",45.81782,13.00362,14],["ROVEREDO IN PIANO",46.00835,12.61903,34],["RUDA",45.84273,13.38709,20],["SACILE",45.94667,12.50326,45],["SAGRADO",45.88144,13.51622,14],["SAN CANDIDO-INNICHEN",46.72704,12.28583,9],["SAN CANZIAN D'ISONZO",45.80452,13.46014,26],["SAN DANIELE DEL FRIULI",46.16105,13.01064,49],["SAN DORLIGO DELLA VALLE",45.61216,13.84574,79],["SAN FLORIANO DEL COLLIO",45.97463,13.58391,18],["SAN GIORGIO DI NOGARO",45.80912,13.21629,30],["SAN GIORGIO RICHINVELDA",46.04428,12.86071,29],["SAN GIOVANNI AL NATISONE",45.9679,13.40826,81],["SAN LEONARDO",46.12746,13.53639,31],["SAN LORENZO ISONTINO",45.93187,13.52649,6],["SAN MARTINO AL TAGLIAM.",46.01821,12.86844,13],["SAN MICHELE AL TAGLIAM. 2",45.70336,13.01583,51],["SAN NICOLO' DI COMELICO",46.57961,12.52798,4],["SAN PIER D'ISONZO",45.84244,13.45221,15],["SAN PIETRO AL NATISONE",46.13208,13.49021,38],["SAN PIETRO DI CADORE",46.57479,12.60383,6],["SAN QUIRINO",46.03757,12.66962,39],["SAN VITO AL TAGLIAMENTO",45.9127,12.85804,46],["SAN VITO AL TORRE",45.89689,13.37485,17],["SAN VITO DI FAGAGNA",46.09211,13.05861,8],["SANTA MARIA LA LONGA",45.94751,13.28159,18],["SANTO STEFANO DI CADORE",46.55978,12.55685,8],["SAPPADA",46.57538,12.70012,32],["SAURIS",46.45787,12.72274,24],["SAVOGNA",46.17534,13.54726,14],["SAVOGNA D'ISONZO",45.89536,13.57244,13],["SEDEGLIANO",46.01832,12.96709,42],["SEQUALS",46.15984,12.85243,17],["SESTO AL REGHENA",45.86392,12.83778,47],["SESTO-SEXTEN",46.69542,12.35695,18],["SGONICO",45.73124,13.73586,67],["SOCCHIEVE",46.40231,12.83216,11],["SPILIMBERGO",46.11341,12.89224,66],["STARANZANO",45.80361,13.50174,26],["STREGNA",46.13124,13.59237,26],["SUTRIO",46.50449,12.99295,10],["TAIPANA",46.25345,13.34362,40],["TALMASSONS",45.9272,13.12882,16],["TARCENTO",46.21569,13.21725,84],["TARVISIO",46.49806,13.60601,67],["TAVAGNACCO",46.10624,13.21903,66],["TEGLIO VENETO",45.81624,12.87003,5],["TERZO D'AQUILEIA",45.8015,13.34675,6],["TOLMEZZO",46.41438,13.01656,66],["TORREANO",46.13606,13.42067,39],["TORVISCOSA",45.8317,13.26611,17],["TRAMONTI DI SOPRA",46.2625,12.7617,10],["TRAMONTI DI SOTTO",46.26866,12.7762,34],["TRASAGHIS",46.2921,13.05885,22],["TRAVESIO",46.19077,12.86969,21],["TREPPO CARNICO",46.53608,13.05237,16],["TREPPO GRANDE",46.19046,13.15333,26],["TRICESIMO",46.15814,13.20746,40],["TRIESTE",45.65371,13.7872,1024],["TRIVIGNANO UDINESE",45.94429,13.33007,16],["TURRIACO",45.81937,13.46894,8],["UDINE",46.06636,13.23829,651],["VAJONT",46.14558,12.69827,5],["VALVASONE",45.97953,12.88119,4],["VALVASONE ARZENE",45.99416,12.85521,26],["VARMO",45.8879,12.98745,27],["VENEZIA",45.50537,12.33933,1],["VENZONE",46.35784,13.13481,17],["VERZEGNIS",46.388,12.98417,9],["VIGO DI CADORE",46.50148,12.46459,9],["VILLA SANTINA",46.41512,12.92633,14],["VILLA VICENTINA",45.81593,13.39414,8],["VILLESSE",45.86435,13.44124,7],["VISCO",45.89284,13.34287,8],["VITO D'ASIO",46.25384,12.94553,52],["VIVARO",46.09278,12.78449,6],["ZOPPOLA",45.95944,12.7741,35],["ZUGLIO",46.46127,13.02308,10]],"fermate":[["04007",45.65688,13.77292,1,1],["04011",45.65618,13.77189,1,1],["04014",45.65706,13.77136,1,1],["04015",45.65677,13.77066,1,1],["04016",45.65697,13.77141,1,1],["04017",45.65669,13.77069,1,1],["04018",45.65679,13.7711,1,1],["04019",45.65688,13.77146,1,1],["04022",45.65679,13.77213,1,1],["04023",45.6565,13.77054,1,1],["11007",45.65776,13.77264,1,1],["12004",45.65809,13.77228,1,1],["13003",45.64554,13.75924,1,1],["19004",45.65388,13.78618,1,1],["19006",45.65266,13.78726,1,1],["31601",45.77732,13.00215,2,1],["31608",45.75108,13.03381,2,1],["31640",45.75208,13.03285,2,1],["31666",45.75202,13.03279,2,1],["31801",45.68608,13.13203,3,1],["31A03",45.83318,13.21441,2,1],["35314",45.97265,13.4079,2,1],["35348",45.97216,13.40788,3,1],["35386",45.97254,13.40786,2,1],["35503",46.09821,13.57927,2,1],["36221",46.09235,13.43725,2,1],["36259",46.09059,13.44114,2,1],["36277",46.09059,13.44075,2,1],["36401",45.98765,13.37021,2,1],["36412",45.98734,13.36989,2,1],["36923",46.13087,13.43362,2,1],["37220",45.95454,13.27876,2,1],["37221",45.9545,13.27884,2,1],["38004",45.65418,13.78793,1,1],["38102",45.82369,13.34249,2,1],["38103",45.82167,13.33222,2,1],["38405",45.7712,13.36791,2,1],["40104",46.03609,13.18351,2,1],["40116",46.03598,13.18325,2,1],["40802",45.96509,12.97508,2,1],["40806",45.97452,12.97294,2,1],["40830",45.97443,12.97312,2,1],["40H17",45.67485,13.11458,3,1],["40H18",45.67477,13.1141,3,1],["51703",46.21966,13.06742,2,1],["51716",46.21925,13.06705,2,1],["51832",46.20619,12.96113,2,1],["60151",46.15909,13.23454,2,1],["60157",46.15857,13.2161,2,1],["601FS",46.15916,13.23488,2,1],["60701",46.21455,13.21976,2,1],["60706",46.21232,13.19675,2,1],["60712",46.21329,13.20357,2,1],["60758",46.21789,13.21916,2,1],["60763",46.21221,13.19672,2,1],["60774",46.21315,13.20322,2,1],["60797",46.21774,13.21984,2,1],["607FS",46.20922,13.19635,2,1],["60850",46.20937,13.19681,2,1],["60910",46.23404,13.1638,2,1],["60955",46.23425,13.16339,2,1],["609FS",46.23119,13.16232,2,1],["61014",46.27547,13.12797,2,1],["61053",46.26625,13.10954,2,1],["61065",46.27275,13.13408,2,1],["610FS",46.27438,13.1282,2,1],["61201",46.32991,13.13682,2,1],["61204",46.37332,13.13484,2,1],["61205",46.37362,13.13337,2,1],["61210",46.33014,13.13678,2,1],["61212",46.37334,13.13468,2,1],["612FS",46.37371,13.13288,2,1],["612FV",46.33202,13.13559,2,1],["61330",46.25637,13.28276,2,1],["61345",46.25643,13.28277,2,1],["70101",46.05711,13.24287,2,1],["70193",46.0943,13.23547,3,1],["701FS",46.05585,13.24206,2,1],["70211",46.09339,13.23162,2,1],["70212",46.09306,13.23154,2,1],["70229",46.06598,13.21731,2,1],["70C37",46.05625,13.24136,1,1],["75304",45.63253,13.02841,2,1],["75313",45.63923,13.05427,2,1],["80211",46.39826,13.24897,2,1],["80219",46.39885,13.24698,2,1],["80303",46.51098,13.60396,2,1],["80308",46.50126,13.50133,2,1],["80318",46.50448,13.57716,2,1],["80322",46.50597,13.60771,2,1],["80343",46.49592,13.59961,2,1],["80344",46.49592,13.59951,2,1],["80346",46.51106,13.6038,2,1],["80351",46.50153,13.50144,2,1],["803FS",46.50631,13.60715,2,1],["804FS",46.50283,13.49494,2,1],["80808",46.50793,13.31141,2,1],["80820",46.50803,13.31135,2,1],["808FS",46.50889,13.31159,2,1],["81201",46.40523,13.01203,2,1],["81214",46.41207,13.01176,2,1],["81233",46.41997,13.02032,2,1],["81254",46.41243,13.01234,2,1],["81317",46.47585,13.07379,2,1],["81341",46.47614,13.07405,2,1],["82201",46.41356,12.92182,2,1],["95305",46.44404,12.38831,2,1],["95313",46.44651,12.38765,2,1],["95323",46.44648,12.38754,2,1],["98205",46.5565,12.55126,2,1],["98207",46.55714,12.54926,2,1],["98209",46.55956,12.54845,2,1],["98502",46.73257,12.27255,2,1],["98503",46.73051,12.27801,2,1],["98505",46.73253,12.27258,2,1],["B0601",46.14093,12.20962,2,1],["D3042",45.6939,13.79061,1,1],["D6027",45.75423,13.66401,1,1],["D6030",45.75486,13.65814,1,1],["D6032",45.76131,13.6527,1,1],["D6037",45.77532,13.64506,3,1],["D6071",45.75473,13.6579,1,1],["D6103",45.75342,13.68735,1,1],["D6113",45.76057,13.66163,1,1],["D6114",45.76057,13.66175,1,1],["D7022",45.72981,13.73658,1,1],["D7049",45.72953,13.7355,1,1],["D7055",45.73237,13.7397,1,1],["D9005",45.60494,13.84851,1,1],["D9007",45.60368,13.83842,1,1],["D9019",45.60491,13.84811,1,1],["E0001",45.60255,13.77013,1,1],["E0083",45.59999,13.76765,1,1],["E0084",45.5984,13.76723,1,1],["G0205",45.9577,13.46183,2,1],["G0611",45.85368,13.48558,2,1],["G0612",45.85342,13.48556,2,1],["G0918",45.68341,13.4159,1,1],["G0921",45.68656,13.41833,1,1],["G0922",45.68631,13.41586,1,1],["G0933",45.6793,13.38684,3,1],["G1607",45.83095,13.50457,3,1],["G1622",45.83086,13.50476,3,1],["G1650",45.81955,13.48453,2,1],["G1704",45.88266,13.50989,2,1],["G1707",45.88261,13.51018,2,1],["G1711",45.87301,13.48402,2,1],["G7112",45.9428,13.6099,3,1],["G7165",45.94214,13.60989,3,1],["G7251",45.9407,13.60856,2,1],["IN001",45.95538,13.63537,2,1],["IN007",45.95559,13.6467,2,1],["IN021",45.95548,13.63654,2,1],["M2019",45.80738,13.54331,3,1],["M2033",45.80728,13.54327,3,1],["M2072",45.80277,13.52859,3,1],["M2090",45.80559,13.52865,3,1],["M2091",45.8026,13.52863,3,1],["P0406",46.03695,12.61475,2,1],["P0408",46.07513,12.5901,2,1],["P0437",46.03744,12.61456,2,1],["P0439",46.07502,12.59021,2,1],["P0441",46.08089,12.5925,2,1],["P0503",45.88493,12.70151,2,1],["P0504",45.88592,12.69667,2,1],["P0523",45.88601,12.69571,2,1],["P0711",45.8977,12.54492,2,1],["P0718",45.89738,12.54445,2,1],["P0729",45.89782,12.54537,2,1],["P1002",45.95348,12.84045,2,1],["P1007",45.95319,12.83977,2,1],["P2124",45.92713,12.7392,2,1],["P21D2",45.92669,12.73625,2,1],["P21D5",45.92681,12.73575,2,1],["P2501",46.17019,12.71331,2,1],["P2707",46.15235,12.65793,2,1],["P2723",46.15259,12.65828,2,1],["P3002",46.17943,12.95048,2,1],["P302M",46.19118,12.93299,2,1],["P303M",46.19078,12.9328,2,1],["P3305",45.97209,12.66365,2,1],["P3322",45.95797,12.65339,2,1],["P3701",45.94862,12.49781,2,1],["P3702",45.95873,12.51428,2,1],["P3817",46.04638,12.87778,2,1],["P4101",45.9122,12.85218,2,1],["P4310",45.87048,12.79913,2,1],["P4319",45.87027,12.79914,2,1],["P4401",46.10852,12.90059,2,1],["P4406",46.11102,12.89217,2,1],["P4435",46.11108,12.89151,2,1],["P44D0",46.11779,12.89486,2,1],["P4715",46.18688,12.87678,2,1],["T4901",45.77889,12.60682,2,1],["TS608",45.65718,13.77087,2,1],["UD026",46.10505,13.21797,1,1],["UD030",46.10544,13.22137,1,1],["UD033",46.07677,13.22851,1,1],["UD036",46.10792,13.21969,1,1],["UD050",46.06682,13.2372,1,1],["UD051",46.06621,13.23892,1,1],["UD237",46.05612,13.24179,1,1],["UD459",46.06766,13.23878,1,1],["UD746",46.07581,13.28408,2,1],["UD750",46.07547,13.28225,1,1],["UD763",46.0758,13.28469,1,1],["UL066",45.67125,13.11441,1,1],["UP105",45.96208,12.65787,1,1],["UP129",45.95704,12.65449,1,1],["UP147",45.96213,12.65829,3,1],["UP176",45.96296,12.65708,3,1],["UP705",45.98083,12.69831,3,1],["UP706",45.98263,12.70063,1,1],["UP748",45.98039,12.69709,3,1],["UP840",45.96497,12.61384,1,1],["UP841",45.96505,12.6139,1,1],["UP857",45.96224,12.61869,1,1],["V2901",45.77996,12.83015,2,1],["V3474",45.63819,13.05375,2,1],["V3475",45.63814,13.05375,2,1],["V3483",45.63787,13.04448,2,1],["V3485",45.6356,13.04014,2,1],["V4002",45.80998,12.85848,2,1],["V4299",45.50537,12.33933,2,1],["05011",45.65013,13.77165,1,2],["23007",45.66406,13.76845,3,2],["30301",45.93562,13.25198,2,2],["30318",45.91629,13.26217,2,2],["30402",45.89073,13.26226,3,2],["30506",45.91038,13.18349,3,2],["30511",45.90774,13.18679,2,2],["30602",45.93429,13.09478,3,2],["30614",45.93542,13.0942,2,2],["30617",45.93321,13.10531,2,2],["30618",45.92207,13.14316,2,2],["30703",45.87251,13.08728,2,2],["30711",45.86844,13.0449,2,2],["30715",45.87522,13.04175,3,2],["30808",45.82659,13.10052,2,2],["30812",45.83459,13.09938,3,2],["30813",45.83587,13.10048,3,2],["30816",45.86331,13.10882,2,2],["30819",45.84347,13.14969,2,2],["30I11",45.87057,13.222,2,2],["30I13",45.85081,13.18263,2,2],["30I14",45.86758,13.19685,2,2],["31102",45.81083,13.16067,3,2],["31103",45.77925,13.17218,2,2],["31106",45.79082,13.17514,2,2],["31108",45.80249,13.1875,2,2],["31204",45.81844,13.12555,3,2],["31206",45.81849,13.12943,2,2],["31306",45.8039,13.0825,2,2],["31406",45.84953,13.03591,2,2],["31407",45.83612,13.07834,2,2],["31505",45.81439,13.01019,3,2],["31607",45.77797,13.00145,3,2],["31612",45.79393,13.02433,3,2],["31642",45.74642,13.01639,2,2],["31648",45.69202,13.06797,2,2],["31649",45.79299,13.02117,2,2],["31664",45.73833,13.02164,2,2],["31667",45.78884,13.01323,2,2],["31670",45.75112,13.03398,2,2],["31813",45.66144,13.07635,3,2],["31818",45.66083,13.10128,2,2],["31819",45.67445,13.10244,3,2],["31A10",45.8317,13.21419,3,2],["31A13",45.77128,13.23615,2,2],["31A17",45.80138,13.22321,2,2],["32206",45.65663,13.7731,3,2],["33302",45.84021,13.48701,3,2],["33403",45.80967,13.52802,3,2],["33608",45.95796,13.46429,3,2],["34305",45.8884,13.44394,3,2],["35205",45.92459,13.4016,2,2],["35358",45.97182,13.38844,2,2],["35402",45.99943,13.43773,2,2],["35412",45.99722,13.43791,3,2],["35507",46.08279,13.54338,2,2],["35511",46.05113,13.48732,2,2],["35514",46.04613,13.48004,3,2],["35531",46.06345,13.51403,2,2],["35610",46.127,13.59103,2,2],["35702",46.15596,13.59288,2,2],["35814",46.1748,13.64769,2,2],["35823",46.18054,13.65339,2,2],["35902",46.19484,13.53087,2,2],["35903",46.15397,13.52323,2,2],["35908",46.17844,13.57124,2,2],["35910",46.19211,13.54604,2,2],["36107",46.12979,13.48799,3,2],["36133",46.1142,13.48848,2,2],["36207",46.05783,13.45691,2,2],["36211",46.07075,13.46272,2,2],["36217",46.10076,13.41838,2,2],["36219",46.09182,13.41943,3,2],["36252",46.09579,13.42422,3,2],["36262",46.07472,13.45758,2,2],["36268",46.10094,13.4448,2,2],["36322",46.05585,13.404,2,2],["36342",46.05867,13.39485,3,2],["36407",45.99234,13.39193,2,2],["36418",45.98985,13.38053,3,2],["36519",46.01736,13.33677,2,2],["36520",46.01986,13.34337,2,2],["36522",46.00811,13.33202,3,2],["36526",46.00317,13.34154,3,2],["36608",46.03927,13.2985,2,2],["36622",45.92127,13.14188,3,2],["36624",46.02006,13.28548,3,2],["36710",46.0526,13.31024,2,2],["36909",46.17276,13.43068,3,2],["36911",46.13053,13.43378,3,2],["36925",46.12592,13.40326,3,2],["36929",46.15134,13.43592,2,2],["36A31",46.11552,13.50592,2,2],["36A34",46.13153,13.57781,2,2],["37103",45.97788,13.28164,2,2],["37112",45.97222,13.32865,3,2],["37121",45.9915,13.27206,2,2],["37136",45.96061,13.25497,2,2],["37306",45.95455,13.32201,2,2],["37314",45.93022,13.33235,2,2],["37404",45.90593,13.30457,3,2],["37415",45.89174,13.30539,3,2],["37416",45.91152,13.34612,2,2],["37419",45.90689,13.29684,3,2],["37610",45.89558,13.36907,3,2],["37716",45.88707,13.30906,2,2],["37719",45.84618,13.29778,2,2],["37807",45.87401,13.35933,2,2],["37901",45.86405,13.39487,2,2],["37A21",46.18224,13.44586,2,2],["37A28",46.18157,13.46113,2,2],["37A33",46.1483,13.48235,2,2],["38101",45.83869,13.32846,3,2],["38104",45.81294,13.3424,3,2],["38113",45.81497,13.33992,2,2],["38123",45.82085,13.34283,2,2],["38402",45.72843,13.38792,2,2],["38406",45.77073,13.36771,3,2],["38409",45.76699,13.36965,2,2],["38502",45.80326,13.41378,2,2],["38505",45.80503,13.42037,2,2],["38508",45.77483,13.40863,2,2],["38706",45.81377,13.26207,2,2],["38711",45.86273,13.26234,2,2],["38719",45.82602,13.23293,2,2],["38833",45.99516,13.17495,3,2],["38835",46.00957,13.25604,2,2],["38843",45.99345,13.18284,2,2],["38902",45.94707,13.17818,3,2],["38908",45.94157,13.20795,3,2],["38913",45.94269,13.20641,2,2],["38A11",45.85059,13.3866,2,2],["40101",46.01965,13.16005,2,2],["40107",46.02849,13.21309,3,2],["40110",46.01371,13.22622,3,2],["40121",46.03402,13.14427,2,2],["40301",46.01602,13.10673,2,2],["40304",46.01191,13.06852,3,2],["40321",46.00252,13.07493,2,2],["40324",46.03962,13.10252,2,2],["40402",45.96489,13.11261,2,2],["40408",45.97903,13.13753,3,2],["40413",45.97585,13.07667,2,2],["40431",45.95477,13.14171,2,2],["40511",45.9403,13.04937,3,2],["40514",45.94313,13.04061,2,2],["40620",45.84474,12.99161,2,2],["40621",45.89216,12.9634,2,2],["40623",45.86228,12.98374,2,2],["40702",45.92593,12.94294,3,2],["40703",45.91045,12.93703,2,2],["40715",45.90219,12.94192,2,2],["40805",45.99612,13.02533,2,2],["40811",45.90895,13.00447,2,2],["40813",45.96755,13.0162,3,2],["40821",45.95725,12.99029,2,2],["40832",45.9081,13.003,3,2],["40837",45.95431,12.93733,2,2],["40842",45.98129,12.97171,2,2],["40890",45.96302,12.97464,3,2],["40903",46.0297,12.99072,2,2],["40912",46.00095,12.99774,2,2],["40931",46.03945,12.93483,2,2],["40941",46.03756,12.96984,2,2],["40H06",45.65957,13.06611,3,2],["41101",46.05069,13.04065,2,2],["41102",46.04806,13.06492,3,2],["41110",46.05478,13.06433,2,2],["41810",45.69161,13.14475,3,2],["46019",45.65765,13.81211,1,2],["50003",45.68198,13.75166,1,2],["50102",46.08345,13.1707,2,2],["50132",46.09726,13.14019,3,2],["50148",46.08195,13.18427,2,2],["50205",46.11365,13.23462,2,2],["50207",46.12237,13.22475,3,2],["50208",46.11198,13.20756,3,2],["50233",46.11524,13.21062,2,2],["50402",46.12096,13.1308,2,2],["50405",46.11432,13.16551,2,2],["50510",46.11781,13.06466,2,2],["50516",46.09873,13.10328,2,2],["50518",46.10863,13.08682,3,2],["50542",46.11862,13.05757,2,2],["50718",46.06011,13.02896,2,2],["50810",46.07349,12.93742,2,2],["50812",46.09204,12.94163,2,2],["50813",46.12108,12.95716,2,2],["50I05",46.14873,12.96605,2,2],["50I07",46.20378,13.02597,2,2],["50I21",46.15783,13.012,3,2],["50I59",46.17241,13.04071,2,2],["51103",46.17257,13.13174,3,2],["51108",46.17708,13.12776,2,2],["51139",46.14477,13.09296,2,2],["51222",46.18785,13.06356,3,2],["51258",46.19319,13.07841,2,2],["51314",46.17309,12.9881,2,2],["51402",46.20596,13.12434,3,2],["51445",46.2056,13.11315,2,2],["51530",46.18642,13.14279,2,2],["51700",46.24934,13.08498,2,2],["51808",46.20483,12.95166,3,2],["51811",46.22135,12.97051,3,2],["51840",46.21962,12.9863,2,2],["51858",46.22362,13.00875,2,2],["51A28",46.13287,13.01743,2,2],["51I08",46.32019,13.07012,2,2],["51I15",46.2852,13.09111,3,2],["51I20",46.31718,13.05359,2,2],["51I23",46.25691,13.03995,2,2],["51I26",46.29203,13.05059,2,2],["52A04",46.31337,13.10726,3,2],["59901",45.64102,13.86273,1,2],["60111",46.15815,13.1907,2,2],["60112",46.15979,13.21605,3,2],["60174",46.15899,13.17923,2,2],["60215",46.15934,13.2528,2,2],["60303",46.11351,13.28546,3,2],["60306",46.09671,13.29148,2,2],["60333",46.12668,13.29585,2,2],["60346",46.13772,13.31813,2,2],["60348",46.14481,13.28114,2,2],["60405",46.17956,13.38352,2,2],["60409",46.15231,13.34453,3,2],["60425",46.15845,13.33624,2,2],["60439",46.12824,13.36159,2,2],["60441",46.17086,13.36201,2,2],["60501",46.1882,13.30618,2,2],["60502",46.1884,13.30761,3,2],["60505",46.19684,13.29044,2,2],["60532",46.19762,13.34178,2,2],["60603",46.19891,13.26387,3,2],["60618",46.23869,13.27846,2,2],["60703",46.20311,13.20944,3,2],["60716",46.24708,13.24773,2,2],["60777",46.19335,13.22806,2,2],["60820",46.21944,13.20161,2,2],["60855",46.22561,13.19003,2,2],["60905",46.2329,13.15247,2,2],["60906",46.23548,13.15462,3,2],["60909",46.24554,13.1279,2,2],["61001",46.27834,13.13976,2,2],["61048",46.25351,13.11158,3,2],["61066",46.27086,13.14028,2,2],["61075",46.26237,13.10905,3,2],["61114",46.26685,13.20868,2,2],["61202",46.37932,13.13542,3,2],["61208",46.38399,13.13641,2,2],["61209",46.38038,13.13428,3,2],["61336",46.27506,13.2704,2,2],["61339",46.2795,13.25208,2,2],["61347",46.30718,13.27292,2,2],["61348",46.30725,13.35162,2,2],["61402",46.26715,13.37015,2,2],["61404",46.21608,13.39673,2,2],["61412",46.27237,13.33794,2,2],["61444",46.2422,13.38156,2,2],["61453",46.25413,13.366,2,2],["61455",46.25206,13.31859,2,2],["70171",46.09935,13.23039,2,2],["70C61",46.01618,13.21096,3,2],["75002",45.67001,13.0578,2,2],["75301",45.63961,13.06125,2,2],["75311",45.64182,13.05453,2,2],["75319",45.63459,13.01593,2,2],["80101",46.35582,13.29432,2,2],["80111",46.3621,13.35029,2,2],["80115",46.30568,13.40491,2,2],["80129",46.36816,13.30192,2,2],["80201",46.40848,13.31069,2,2],["80207",46.4011,13.41888,2,2],["80209",46.40434,13.29186,3,2],["80210",46.38989,13.47294,2,2],["80216",46.40185,13.36069,2,2],["80218",46.39784,13.43182,2,2],["80221",46.40461,13.29335,2,2],["80309",46.50547,13.57174,3,2],["80310",46.48884,13.58478,2,2],["80313",46.44177,13.57135,2,2],["80320",46.49733,13.70273,2,2],["80326",46.50676,13.5335,2,2],["80329",46.48259,13.57805,2,2],["80335",46.49727,13.63303,2,2],["80341",46.50512,13.58006,3,2],["80347",46.52219,13.61678,2,2],["80348",46.53377,13.63873,2,2],["80354",46.50768,13.54425,2,2],["80371",46.49382,13.6679,2,2],["80401",46.50666,13.4401,2,2],["80405",46.49327,13.49076,2,2],["80406",46.49679,13.50024,2,2],["80409",46.5008,13.39713,2,2],["80421",46.503,13.37411,2,2],["80505",46.4616,13.29535,2,2],["80506",46.43804,13.30894,2,2],["80704",46.39975,13.18584,2,2],["80706",46.39907,13.18177,3,2],["80708",46.39988,13.22485,2,2],["80717",46.48821,13.19447,2,2],["80722",46.43347,13.19902,2,2],["80801",46.50571,13.30522,2,2],["80821",46.49418,13.30063,2,2],["80826",46.50757,13.26851,2,2],["80828",46.5055,13.25395,2,2],["80901",46.3722,13.09166,2,2],["80902",46.37012,13.07261,3,2],["81009",46.37193,13.0527,2,2],["81014",46.36822,13.03465,3,2],["81104",46.38333,12.9764,2,2],["81208",46.40442,13.01182,3,2],["81216",46.41095,13.00431,2,2],["81223",46.43685,12.99307,2,2],["81229",46.4086,12.97684,3,2],["81252",46.39694,13.02708,2,2],["81260",46.45314,13.03622,2,2],["81314",46.48342,13.01907,3,2],["81322",46.47709,13.01722,2,2],["81327",46.47667,13.02227,2,2],["81334",46.47145,13.02441,3,2],["81410",46.49512,13.10012,2,2],["81413",46.53606,13.12496,2,2],["81418",46.52888,13.11618,3,2],["81420",46.54059,13.13053,2,2],["81421",46.48969,13.09325,2,2],["81501",46.54003,13.07341,2,2],["81610",46.53307,13.04437,3,2],["81613",46.53992,13.06382,2,2],["81707",46.56771,13.00607,2,2],["81708",46.58282,13.00367,2,2],["81740",46.52967,13.03045,2,2],["81810",46.52541,12.99966,2,2],["82120",46.43102,12.91958,2,2],["82122",46.43174,12.94476,2,2],["82138",46.43259,12.89354,2,2],["82210",46.40793,12.93647,2,2],["82301",46.40975,12.87761,2,2],["82308",46.41172,12.87702,3,2],["82525",46.50072,12.86543,2,2],["82534",46.47201,12.8645,2,2],["82541",46.48472,12.85487,2,2],["82552",46.49924,12.85012,3,2],["82607",46.52964,12.96238,2,2],["82610",46.52612,12.92062,2,2],["82712",46.51461,12.86571,3,2],["82807",46.54672,12.85645,2,2],["82904",46.57797,12.81245,2,2],["82906",46.5867,12.84423,2,2],["82909",46.57775,12.7563,2,2],["82912",46.58397,12.76473,2,2],["82914",46.58039,12.79748,2,2],["83002",46.51827,12.8205,2,2],["83005",46.52107,12.78454,2,2],["83009",46.52191,12.77678,2,2],["83107",46.46666,12.694,2,2],["83114",46.46178,12.71422,2,2],["83124",46.45343,12.74765,2,2],["83125",46.4487,12.73598,2,2],["83201",46.42402,12.57947,2,2],["83209",46.44437,12.53915,2,2],["83220",46.41176,12.59155,2,2],["83305",46.39448,12.67923,2,2],["83306",46.39511,12.6807,3,2],["83308",46.39722,12.64763,2,2],["83309",46.39578,12.71059,2,2],["83404",46.39926,12.75075,2,2],["83405",46.43419,12.78038,2,2],["83410",46.41561,12.80057,3,2],["83413",46.41627,12.79422,2,2],["83509",46.40328,12.82358,2,2],["90302",45.87886,12.8863,3,2],["93303",46.16896,12.92066,3,2],["95302",46.42853,12.37513,2,2],["95307",46.4601,12.41585,2,2],["95316",46.44155,12.38115,2,2],["95320",46.46635,12.42602,2,2],["95406",46.5119,12.46158,2,2],["95408",46.4968,12.47878,2,2],["95410",46.50756,12.4579,2,2],["95502",46.55199,12.43712,2,2],["97504",46.65662,12.41928,2,2],["97507",46.58939,12.51358,2,2],["97518",46.59711,12.49785,2,2],["97707",46.66782,12.39897,2,2],["97709",46.70203,12.35018,2,2],["97717",46.68945,12.36679,2,2],["97904",46.57676,12.53183,2,2],["98104",46.57457,12.59932,2,2],["98208",46.56512,12.57898,2,2],["98210",46.58093,12.6233,2,2],["98504",46.71439,12.31271,2,2],["98508",46.72709,12.28342,2,2],["99110",45.80437,13.53413,1,2],["AT930",46.08994,13.38981,2,2],["AT933",46.0828,13.32142,2,2],["AT936",46.09284,13.37413,2,2],["AT939",46.28269,13.09854,2,2],["AT940",46.31522,13.10322,2,2],["B0602",46.14696,12.22301,2,2],["B0902",46.27786,12.31422,2,2],["B3124",46.2596,12.31282,2,2],["B3151",46.24728,12.29881,2,2],["B4091",46.1802,12.28008,2,2],["C0802",45.84405,13.30382,2,2],["C2306",45.81464,13.34493,2,2],["C3004",45.99167,13.4636,2,2],["CIPN0",45.93257,13.6083,2,2],["D0018",45.65678,13.82965,1,2],["D4008",45.70023,13.73965,1,2],["D4029",45.73654,13.69219,1,2],["D5008",45.70685,13.7161,3,2],["D5013",45.69866,13.7278,1,2],["D6001",45.78764,13.64429,1,2],["D6009",45.77587,13.68491,1,2],["D6055",45.78869,13.59078,3,2],["D6061",45.77465,13.61294,3,2],["D6064",45.77139,13.63744,3,2],["D6072",45.75409,13.6597,1,2],["D6107",45.7936,13.58369,1,2],["D7011",45.70618,13.76612,1,2],["D7042",45.74789,13.72871,1,2],["D7046",45.74065,13.74299,1,2],["D8002",45.71725,13.81082,1,2],["D8009",45.6988,13.8316,1,2],["D9009",45.6141,13.85842,1,2],["D9017",45.59968,13.86066,1,2],["D9055",45.63394,13.90867,1,2],["E0037",45.60525,13.80759,1,2],["E0056",45.60188,13.77506,1,2],["E0168",45.60606,13.72431,1,2],["E1001",45.60905,13.84578,3,2],["G0101",45.93911,13.51337,2,2],["G0105",45.94003,13.51531,3,2],["G0201",45.93228,13.44603,2,2],["G0207",45.9742,13.45449,2,2],["G0222",45.97383,13.50015,2,2],["G0311",45.80636,13.58134,2,2],["G0313",45.83731,13.56574,2,2],["G0316",45.86846,13.57204,2,2],["G0317",45.84584,13.53953,2,2],["G0507",45.9087,13.55349,2,2],["G0606",45.86509,13.48197,2,2],["G0801",45.89798,13.50798,2,2],["G0913",45.70432,13.4635,3,2],["G0914",45.69639,13.45455,3,2],["G0915",45.67932,13.42883,2,2],["G0920",45.68577,13.4211,1,2],["G0932",45.67817,13.39132,1,2],["G0937",45.68209,13.37756,1,2],["G0948",45.71707,13.45927,2,2],["G0950",45.68088,13.40133,2,2],["G0955",45.71974,13.47073,2,2],["G1001",45.91942,13.48128,2,2],["G1510",45.89014,13.44313,2,2],["G1608",45.82816,13.50204,3,2],["G1801",45.75792,13.46782,2,2],["G1823",45.82046,13.46544,2,2],["G1918",45.96383,13.55821,2,2],["G2005",45.93246,13.52646,3,2],["G2107",45.83506,13.44196,2,2],["G2211",45.89296,13.59023,2,2],["G2321",45.80819,13.49576,3,2],["G7002",45.91899,13.60122,3,2],["G7012",45.9411,13.61773,3,2],["G7146",45.93493,13.62007,3,2],["G7200",45.98071,13.6101,2,2],["G7207",45.93249,13.62994,2,2],["G7220",45.93849,13.56241,3,2],["G7249",45.96793,13.61517,2,2],["G7252",45.94957,13.62795,3,2],["G7257",45.94342,13.62831,2,2],["LM003",45.65129,13.76725,2,2],["M2060",45.7755,13.52804,3,2],["M2116",45.80233,13.54378,2,2],["M2220",45.80456,13.54203,3,2],["M2402",45.8121,13.53712,2,2],["P0104",46.19731,12.60692,2,2],["P0105",46.20176,12.62113,2,2],["P0201",46.14509,12.79158,2,2],["P0310",46.0041,12.86001,2,2],["P0312",46.0033,12.85989,2,2],["P0409",46.0633,12.56495,2,2],["P0410",46.08125,12.59252,2,2],["P0413",46.07055,12.62205,2,2],["P0423",46.05231,12.56446,2,2],["P0436",46.04938,12.60415,2,2],["P0452",46.11112,12.52405,2,2],["P0478",46.10693,12.60109,2,2],["P0479",46.12383,12.62112,2,2],["P0505",45.8874,12.74517,2,2],["P0534",45.89221,12.69885,2,2],["P0563",45.90914,12.66958,2,2],["P05D5",45.90573,12.70779,2,2],["P05D6",45.88352,12.71536,2,2],["P0626",46.20021,12.52308,2,2],["P0691",46.19085,12.55989,2,2],["P0701",45.90328,12.52609,2,2],["P0706",45.89669,12.51698,2,2],["P0738",45.89412,12.55624,2,2],["P0746",45.91268,12.54715,2,2],["P0804",46.03486,12.52851,2,2],["P0917",45.97358,12.46351,2,2],["P0920",45.95013,12.45059,2,2],["P0928",45.98386,12.47585,2,2],["P10D6",45.935,12.84309,2,2],["P1110",46.20993,12.89842,2,2],["P1204",46.20032,12.77608,2,2],["P1328",45.84319,12.74642,2,2],["P1330",45.84619,12.70083,2,2],["P1491",46.28665,12.43751,2,2],["P1501",46.26675,12.5154,2,2],["P1508",46.26529,12.48097,2,2],["P1526",46.24789,12.47111,2,2],["P1601",46.22865,12.91711,2,2],["P168M",46.24175,12.8918,2,2],["P16M0",46.21935,12.91199,2,2],["P1718",45.98861,12.7074,2,2],["P1730",46.00046,12.66456,2,2],["P17D6",45.97955,12.69573,2,2],["P1904",46.27671,12.38436,2,2],["P1905",46.26974,12.34368,2,2],["P2126",45.9184,12.78147,2,2],["P2130",45.94653,12.72471,2,2],["P2143",45.9187,12.75744,2,2],["P2219",45.98963,12.60282,2,2],["P2233",45.98016,12.57053,2,2],["P2234",45.9702,12.55227,2,2],["P2249",45.98407,12.50878,2,2],["P2250",45.97883,12.50242,2,2],["P2405",46.20308,12.71629,2,2],["P2513",46.15506,12.73247,2,2],["P2524",46.15055,12.74723,2,2],["P2540",46.16244,12.6981,2,2],["P2553",46.1052,12.74785,2,2],["P2691",46.21719,12.78789,2,2],["P2710",46.1533,12.6521,2,2],["P2740",46.09401,12.67887,2,2],["P2742",46.1154,12.68114,2,2],["P2801",45.85911,12.92931,2,2],["P2804",45.85946,12.95824,2,2],["P2817",45.87652,12.91885,2,2],["P2926",45.82121,12.64937,2,2],["P2965",45.8708,12.60936,2,2],["P2969",45.86721,12.62326,2,2],["P29D3",45.84338,12.6172,2,2],["P3007",46.19183,12.95141,2,2],["P3028",46.16439,12.89672,2,2],["P3129",46.03203,12.49051,2,2],["P3204",45.96952,12.6014,2,2],["P3234",45.93944,12.59426,2,2],["P3355",45.92891,12.65745,2,2],["P3373",45.96887,12.65191,2,2],["P3393",45.98381,12.63007,2,2],["P3432",45.84726,12.56951,2,2],["P3508",45.82358,12.67153,2,2],["P3741",45.93834,12.49751,2,2],["P3823",46.0358,12.88204,2,2],["P38D4",46.02028,12.82624,2,2],["P4010",46.05839,12.69231,2,2],["P4030",46.02197,12.65283,2,2],["P4115",45.91218,12.87441,2,2],["P4204",46.14161,12.85867,2,2],["P4309",45.84666,12.82176,2,2],["P4313",45.87925,12.79688,2,2],["P4329",45.86755,12.86,2,2],["P4341",45.86762,12.85994,2,2],["P4349",45.85727,12.87531,2,2],["P4413",46.08594,12.86867,2,2],["P4420",46.14044,12.90401,2,2],["P4422",46.12481,12.88076,2,2],["P4448",46.12993,12.90077,2,2],["P4501",46.30972,12.79074,2,2],["P4507",46.25305,12.73946,2,2],["P4603",46.29424,12.80145,2,2],["P461M",46.25842,12.8277,2,2],["P4621",46.25153,12.74142,2,2],["P4629",46.26271,12.76895,2,2],["P4710",46.20142,12.82957,2,2],["P4809",45.96515,12.89384,2,2],["P4910",46.23309,12.95819,2,2],["P4915",46.31105,12.93575,2,2],["P4956",46.26069,12.95911,2,2],["P4960",46.27701,12.93799,2,2],["P5001",46.07779,12.77582,2,2],["P5003",46.08757,12.7881,2,2],["P5008",46.11287,12.7892,2,2],["P5114",45.94823,12.75901,2,2],["P5126",45.97366,12.79773,2,2],["P5127",45.9906,12.78395,2,2],["SF107",46.4959,12.86658,3,2],["SF135",46.56864,12.70105,2,2],["SF140",46.62013,12.71685,2,2],["SF146",46.56605,12.68589,2,2],["SF151",46.58534,12.72693,2,2],["T4106",45.81506,12.62745,2,2],["T4191",45.80641,12.61239,2,2],["TR04A",45.67564,13.78813,1,2],["TS114",45.76707,13.63931,2,2],["TS604",45.72056,13.69859,2,2],["UD001",46.02752,13.20459,1,2],["UD048",46.05968,13.23346,1,2],["UD071",46.11131,13.23498,1,2],["UD130",46.10048,13.26174,1,2],["UD602",46.06485,13.23627,1,2],["UD654",46.10114,13.21179,1,2],["UD698",46.09218,13.2001,1,2],["UD712",46.05245,13.26278,1,2],["UD739",46.04516,13.22292,3,2],["UD749",46.07815,13.29804,3,2],["UD767",46.06254,13.218,3,2],["UD901",46.08081,13.23422,3,2],["UL019",45.69289,13.14753,1,2],["UL027",45.65542,13.09744,1,2],["UL044",45.67284,13.11045,1,2],["UL046",45.65604,13.10318,1,2],["UL076",45.6714,13.09921,1,2],["UP239",45.96821,12.69148,1,2],["UP415",45.98188,12.6448,3,2],["UP438",45.98634,12.64194,1,2],["UP601",45.92589,12.63516,1,2],["UP641",45.92917,12.64461,3,2],["UP707",45.98371,12.70293,3,2],["UP746",45.97728,12.69135,3,2],["UP766",45.98461,12.68778,1,2],["UP793",45.99636,12.71228,1,2],["UP794",45.97554,12.70459,1,2],["UP816",45.96827,12.61833,1,2],["UP826",45.96826,12.6201,3,2],["UP846",45.96792,12.62546,1,2],["UP850",45.95727,12.61933,3,2],["UP993",46.00437,12.61812,3,2],["UP996",46.01102,12.61999,1,2],["V0103",45.79128,12.66553,2,2],["V0901",45.82617,12.78509,2,2],["V0902",45.8186,12.79237,2,2],["V1601",45.79541,12.90568,2,2],["V1603",45.80103,12.89271,2,2],["V2904",45.78225,12.83482,2,2],["V2908",45.77315,12.83951,2,2],["V3010",45.80474,12.72186,2,2],["V3428",45.79242,12.9669,2,2],["X2102",46.09744,13.09121,2,2],["X3177",46.08355,13.01252,2,2]]}</script>
+
+<script>
+"use strict";
+/* =========================================================================
+   Autobus in tempo reale in Friuli Venezia Giulia
+   Interfaccia per le posizioni dei mezzi della rete TPL FVG.
+   Nessun dato viene stimato o ricostruito: si mostra soltanto ciò che il
+   servizio restituisce. Le note tecniche vanno nella console del browser.
+   ========================================================================= */
+
+/* ----------------------------- configurazione ---------------------------- */
+const LABEL_ZOOM      = 12;      // da questo livello compaiono le bandierine
+const ZOOM_GRUPPI     = 10;      // sotto questo livello si mostrano i raggruppamenti
+const INTERVALLO_MS   = 30000;   // cadenza di aggiornamento
+const TIMEOUT_MS      = 12000;   // attesa massima per ogni richiesta
+const STANTIO_MS      = 120000;  // oltre questa età il mezzo è segnato come non aggiornato
+const SCADENZA_MS     = 300000;  // oltre questa età il mezzo è tolto dalla mappa
+const ANIMAZIONE_MS   = 800;     // durata del passaggio fra due posizioni ricevute
+const MAX_BANDIERINE  = 240;     // limite di bandierine disegnate insieme
+const RITENTA_MS      = [5000, 15000, 40000, 90000];   // attese dopo un errore
+
+// Modalità diretta dal browser: quante richieste per ogni giro.
+const DIRETTA_PER_GIRO  = 24;
+const DIRETTA_PARALLELE = 4;
+
+// Indirizzi dell'aggregatore locale, provati nell'ordine.
+const AGGREGATORI = ["./api/mezzi", "http://127.0.0.1:8080/api/mezzi"];
+
+// Servizio ufficiale delle corse monitorate a una fermata.
+const BASE_TEMPO_REALE = "https://realtime.tplfvg.it/API/v1.0/polemonitor/mrcruns";
+// Catalogo ufficiale delle fermate, usato per la ricerca completa.
+const BASE_FERMATE     = "https://tplfvg.it/services/geojson/points/";
+
+// Riquadro del Friuli Venezia Giulia, con un margine di sicurezza.
+const RIQUADRO = { latMin: 45.30, latMax: 47.00, lonMin: 12.00, lonMax: 14.10 };
+const CONFINI  = L.latLngBounds([45.44, 12.16], [46.78, 13.96]);
+
+/* ------------------------------- stato ----------------------------------- */
+const RETE = JSON.parse(document.getElementById("dati-rete").textContent);
+const LOCALITA = RETE.localita;                 // [nome, lat, lon, numero fermate]
+const FERMATE  = RETE.fermate;                  // [codice, lat, lon, maschera, priorità]
+
+const mezzi = new Map();            // identificativo -> dati del mezzo
+const marker = new Map();           // identificativo -> puntino
+const bandierine = new Map();       // identificativo -> bandierina
+const anim = new Map();             // identificativo -> passaggio in corso
+
+let filtri     = { urbano: true, extraurbano: true, linea: "" };
+let scelto     = null;              // identificativo del mezzo selezionato
+let seguito    = null;              // identificativo del mezzo inseguito
+let modalita   = null;              // "aggregatore" oppure "diretta"
+let indirizzoAggregatore = null;
+let timer = null, inCorso = false, fallimenti = 0;
+let ultimoEsito = null, copertura = null;
+let catalogo = null, catalogoInCaricamento = false;
+let cursoreDiretta = 0;
+const menoMoto = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+/* ------------------------------- utilità --------------------------------- */
+const $ = (s) => document.querySelector(s);
+
+function numero(v) {
+  if (typeof v === "number") return v;
+  if (typeof v !== "string") return NaN;
+  return parseFloat(v.trim().replace(",", "."));
+}
+
+/** Accetta la posizione solo se è un punto reale dentro la regione. */
+function posizioneValida(lat, lon) {
+  if (!isFinite(lat) || !isFinite(lon)) return false;
+  if (lat === 0 || lon === 0) return false;
+  return lat >= RIQUADRO.latMin && lat <= RIQUADRO.latMax
+      && lon >= RIQUADRO.lonMin && lon <= RIQUADRO.lonMax;
+}
+
+/** Il tipo di servizio si legge da LineType. Le sigle ignote non si forzano. */
+function tipoServizio(lineType) {
+  const t = String(lineType == null ? "" : lineType).trim().toUpperCase();
+  if (t === "1U" || t === "U") return "urbano";
+  if (t === "1E" || t === "E") return "extraurbano";
+  return "altro";
+}
+
+function testo(v) {
+  if (v == null) return "";
+  const s = String(v).trim();
+  return (s === "null" || s === "undefined") ? "" : s;
+}
+
+function ora(ms) {
+  return new Date(ms).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+}
+
+function eta(ms) {
+  const s = Math.max(0, Math.round((Date.now() - ms) / 1000));
+  if (s < 60) return s + " secondi fa";
+  const m = Math.round(s / 60);
+  return m === 1 ? "1 minuto fa" : m + " minuti fa";
+}
+
+function conAttesa(url, ms) {
+  const ferma = new AbortController();
+  const t = setTimeout(() => ferma.abort(), ms);
+  return fetch(url, { signal: ferma.signal, cache: "no-store", credentials: "omit" })
+    .finally(() => clearTimeout(t));
+}
+
+/** Esegue i compiti a gruppi, per non aprire troppe richieste insieme. */
+async function aGruppi(elementi, quanti, compito) {
+  const esiti = [];
+  for (let i = 0; i < elementi.length; i += quanti) {
+    const parte = elementi.slice(i, i + quanti);
+    esiti.push(...await Promise.all(parte.map(compito)));
+  }
+  return esiti;
+}
+
+/* --------------------- lettura di una corsa ricevuta --------------------- */
+/**
+ * Trasforma una corsa restituita dal servizio in un mezzo da mostrare.
+ * Restituisce null se la posizione non è utilizzabile oppure se i dati
+ * dicono che il mezzo non è ancora partito.
+ */
+function leggiCorsa(c, ricevuto) {
+  if (!c || typeof c !== "object") return null;
+
+  // Un mezzo dichiarato non ancora in servizio non va sulla mappa.
+  if (c.IsStarted === false || c.IsStarted === "false" || c.IsStarted === 0) return null;
+
+  const lat = numero(c.Latitude), lon = numero(c.Longitude);
+  if (!posizioneValida(lat, lon)) return null;
+
+  const veicolo = testo(c.Vehicle);
+  const sigla   = testo(c.LineCode) || testo(c.Line) || "?";
+  const corsa   = testo(c.Race);
+  // Senza identificativo del mezzo si ripiega su una chiave stabile della corsa.
+  const id = veicolo ? "v:" + veicolo : "c:" + sigla + "|" + corsa + "|" + lat.toFixed(4) + "," + lon.toFixed(4);
+
+  return {
+    id, veicolo, sigla,
+    linea:        testo(c.Line),
+    tipo:         tipoServizio(c.LineType),
+    tipoGrezzo:   testo(c.LineType),
+    corsa,
+    direzione:    testo(c.Direction),
+    destinazione: testo(c.Destination),
+    partenza:     testo(c.Departure),
+    arrivo:       testo(c.ArrivalTime),
+    ripartenza:   testo(c.DepartureTime),
+    orarioCorsa:  testo(c.Time),
+    lat, lon,
+    ricevuto                      // ora di ricezione: non è un orario GPS
+  };
+}
+
+/** Inserisce o aggiorna un mezzo, tenendo sempre la lettura più recente. */
+function deposita(m) {
+  if (!m) return;
+  const vecchio = mezzi.get(m.id);
+  if (vecchio && vecchio.ricevuto > m.ricevuto) return;
+  if (vecchio) {
+    m.latPrec = vecchio.lat;
+    m.lonPrec = vecchio.lon;
+    m.mosso = (vecchio.lat !== m.lat || vecchio.lon !== m.lon);
+  }
+  mezzi.set(m.id, m);
+}
+
+/* ====================== acquisizione dei dati ============================= */
+
+/** Cerca l'aggregatore locale. Se non risponde si passa alla modalità diretta. */
+async function scegliModalita() {
+  for (const ind of AGGREGATORI) {
+    try {
+      const r = await conAttesa(ind, 4000);
+      if (!r.ok) continue;
+      const d = await r.json();
+      if (d && Array.isArray(d.mezzi)) {
+        indirizzoAggregatore = ind;
+        modalita = "aggregatore";
+        console.info("[fonte] aggregatore locale attivo:", ind);
+        return;
+      }
+    } catch (e) { /* si prova il successivo */ }
+  }
+  modalita = "diretta";
+  console.info("[fonte] nessun aggregatore locale: richieste dirette dal browser a", BASE_TEMPO_REALE);
+}
+
+/** Legge tutta la flotta già raccolta e deduplicata dall'aggregatore. */
+async function daAggregatore() {
+  const r = await conAttesa(indirizzoAggregatore, TIMEOUT_MS);
+  if (!r.ok) throw new Error("aggregatore: risposta " + r.status);
+  const d = await r.json();
+  const adesso = Date.now();
+  let validi = 0, scartati = 0;
+  for (const c of d.mezzi) {
+    const m = leggiCorsa(c, c.__ricevuto ? Date.parse(c.__ricevuto) : adesso);
+    if (m) { deposita(m); validi++; } else { scartati++; }
+  }
+  copertura = d.copertura || null;
+  console.info("[aggregatore] corse valide " + validi + ", scartate " + scartati +
+               (d.copertura ? ", fermate lette " + d.copertura.fermateLette + " su " + d.copertura.fermateTotali : ""));
+  return validi;
+}
+
+/** Interroga una singola fermata per un tipo di servizio. */
+async function leggiFermata(codice, urbano) {
+  const url = BASE_TEMPO_REALE + "?StopCode=" + encodeURIComponent(codice) + "&IsUrban=" + (urbano ? "true" : "false");
+  const r = await conAttesa(url, TIMEOUT_MS);
+  if (!r.ok) throw new Error("fermata " + codice + ": risposta " + r.status);
+  const d = await r.json();
+  // La risposta può essere un elenco oppure un oggetto che lo contiene.
+  if (Array.isArray(d)) return d;
+  if (d && Array.isArray(d.Runs)) return d.Runs;
+  if (d && Array.isArray(d.runs)) return d.runs;
+  return [];
+}
+
+/**
+ * Modalità diretta: a ogni giro si interroga soltanto una parte delle fermate
+ * selezionate, a rotazione, per non gravare sul servizio pubblico.
+ * La copertura è quindi parziale e cresce con il passare dei giri.
+ */
+async function daServizio() {
+  const compiti = [];
+  for (let i = 0; i < DIRETTA_PER_GIRO && i < FERMATE.length; i++) {
+    const f = FERMATE[(cursoreDiretta + i) % FERMATE.length];
+    const maschera = f[3];
+    if (maschera & 1) compiti.push([f[0], true]);
+    if (maschera & 2) compiti.push([f[0], false]);
+  }
+  cursoreDiretta = (cursoreDiretta + DIRETTA_PER_GIRO) % FERMATE.length;
+
+  const adesso = Date.now();
+  let validi = 0, errori = 0;
+  await aGruppi(compiti, DIRETTA_PARALLELE, async ([codice, urbano]) => {
+    try {
+      const corse = await leggiFermata(codice, urbano);
+      for (const c of corse) {
+        const m = leggiCorsa(c, adesso);
+        if (m) { deposita(m); validi++; }
+      }
+    } catch (e) { errori++; console.debug("[diretta] " + codice + ": " + e.message); }
+  });
+
+  if (errori === compiti.length && compiti.length > 0) {
+    throw new Error("nessuna delle " + compiti.length + " richieste ha risposto");
+  }
+  copertura = {
+    modo: "diretta",
+    fermateTotali: FERMATE.length,
+    fermateLette: Math.min(FERMATE.length, cursoreDiretta || FERMATE.length),
+    richiesteUltimoGiro: compiti.length,
+    erroriUltimoGiro: errori
+  };
+  console.info("[diretta] richieste " + compiti.length + ", errori " + errori + ", corse valide " + validi);
+  return validi;
+}
+
+/** Toglie i mezzi non più rilevati e segna quelli non aggiornati. */
+function invecchia() {
+  const adesso = Date.now();
+  for (const [id, m] of mezzi) {
+    const eta = adesso - m.ricevuto;
+    if (eta > SCADENZA_MS) {
+      mezzi.delete(id);
+      if (scelto === id) chiudiScheda();
+      if (seguito === id) seguito = null;
+    } else {
+      m.stantio = eta > STANTIO_MS;
+    }
+  }
+}
+
+/** Un giro completo di aggiornamento. */
+async function aggiorna(manuale) {
+  if (inCorso) return;
+  if (document.hidden && !manuale) return;   // a scheda nascosta non si interroga nulla
+  inCorso = true;
+  segnala("attesa", "Aggiornamento in corso", "In corso");
+
+  try {
+    if (!modalita) await scegliModalita();
+    const validi = (modalita === "aggregatore") ? await daAggregatore() : await daServizio();
+
+    fallimenti = 0;
+    ultimoEsito = Date.now();
+    invecchia();
+    disegna();
+    aggiornaScheda();
+
+    if (mezzi.size === 0) {
+      segnala("attesa", "Nessuna posizione disponibile", "Nessuna posizione");
+    } else {
+      segnala("ok", "Aggiornato alle " + ora(ultimoEsito), ora(ultimoEsito));
+    }
+    console.info("[giro] mezzi in memoria " + mezzi.size + ", nuove letture " + validi);
+  } catch (e) {
+    fallimenti++;
+    console.warn("[giro] non riuscito (" + fallimenti + "): " + e.message);
+    invecchia();
+    disegna();
+    // Le ultime posizioni restano visibili, ma dichiarate come non aggiornate.
+    segnala("guasto", mezzi.size
+      ? "Aggiornamento non disponibile, posizioni delle " + (ultimoEsito ? ora(ultimoEsito) : "ultima lettura")
+      : "Aggiornamento non disponibile", "Non disponibile");
+  } finally {
+    inCorso = false;
+    riprogramma();
+  }
+}
+
+/** Riprogramma il giro successivo, distanziando i tentativi dopo un errore. */
+function riprogramma() {
+  clearTimeout(timer);
+  if (document.hidden) return;               // sospensione a scheda nascosta
+  const attesa = fallimenti > 0
+    ? RITENTA_MS[Math.min(fallimenti - 1, RITENTA_MS.length - 1)]
+    : INTERVALLO_MS;
+  timer = setTimeout(() => aggiorna(false), attesa);
+}
+
+function segnala(classe, messaggio, breve) {
+  const spia = $("#spia"), stato = $("#stato");
+  spia.className = classe;
+  stato.textContent = (window.innerWidth <= 620 && breve) ? breve : messaggio;
+  $("#stato-pill").title = messaggio + (copertura && copertura.fermateTotali
+    ? " · fermate interrogate " + copertura.fermateLette + " su " + copertura.fermateTotali
+    : "");
+}
+
+function avvisa(messaggio, durata) {
+  const a = $("#avviso");
+  a.textContent = messaggio;
+  a.classList.add("visibile");
+  clearTimeout(avvisa._t);
+  avvisa._t = setTimeout(() => a.classList.remove("visibile"), durata || 4200);
+}
+
+/* ============================ la mappa =================================== */
+
+const mappa = L.map("mappa", {
+  zoomControl: true,
+  preferCanvas: true,
+  zoomSnap: 0.5,
+  wheelPxPerZoomLevel: 110,
+  minZoom: 7,
+  maxZoom: 18,
+  worldCopyJump: false,
+  tap: true
+});
+mappa.zoomControl.setPosition("topleft");
+
+L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  maxZoom: 19,
+  attribution:
+    'Cartografia &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>, ' +
+    'contributori · posizioni dei mezzi: <a href="https://tplfvg.it/">TPL FVG</a>'
+}).addTo(mappa);
+
+mappa.fitBounds(CONFINI, { padding: [12, 12] });
+
+const disegnatore   = L.canvas({ padding: 0.4 });
+const stratoPunti   = L.layerGroup().addTo(mappa);
+const stratoBandiere= L.layerGroup().addTo(mappa);
+const stratoGruppi  = L.layerGroup().addTo(mappa);
+
+const COLORI = {
+  urbano:      { pieno: "#1258c8", scelto: "#0c3f92" },
+  extraurbano: { pieno: "#e2680c", scelto: "#a94b06" },
+  altro:       { pieno: "#5b6470", scelto: "#3d444d" },
+  stantio:     { pieno: "#8a94a2", scelto: "#6b7482" }
+};
+
+/* -------------------------- selezione dei mezzi -------------------------- */
+function passaFiltri(m) {
+  if (m.tipo === "urbano" && !filtri.urbano) return false;
+  if (m.tipo === "extraurbano" && !filtri.extraurbano) return false;
+  if (m.tipo === "altro" && !filtri.urbano && !filtri.extraurbano) return false;
+  if (filtri.linea) {
+    const ago = filtri.linea.toLowerCase();
+    if (!(m.sigla.toLowerCase().includes(ago) || m.linea.toLowerCase().includes(ago))) return false;
+  }
+  return true;
+}
+
+function mezziFiltrati() {
+  const fuori = [];
+  for (const m of mezzi.values()) if (passaFiltri(m)) fuori.push(m);
+  return fuori;
+}
+
+/* ------------------- passaggio fra due posizioni ricevute ---------------- */
+function avviaPassaggio(m) {
+  if (menoMoto || !m.mosso || m.latPrec == null) return;
+  anim.set(m.id, { daLat: m.latPrec, daLon: m.lonPrec, aLat: m.lat, aLon: m.lon, t0: performance.now() });
+  if (!avviaPassaggio._attivo) { avviaPassaggio._attivo = true; requestAnimationFrame(passo); }
+}
+
+function passo(t) {
+  let restano = false;
+  for (const [id, a] of anim) {
+    const k = Math.min(1, (t - a.t0) / ANIMAZIONE_MS);
+    const e = 1 - Math.pow(1 - k, 3);
+    a.lat = a.daLat + (a.aLat - a.daLat) * e;
+    a.lon = a.daLon + (a.aLon - a.daLon) * e;
+    if (k >= 1) anim.delete(id); else restano = true;
+  }
+  posiziona();
+  if (restano) requestAnimationFrame(passo);
+  else { avviaPassaggio._attivo = false; posiziona(); }
+}
+
+/** Posizione da disegnare: quella animata se il passaggio è in corso. */
+function puntoDi(m) {
+  const a = anim.get(m.id);
+  return (a && a.lat != null) ? [a.lat, a.lon] : [m.lat, m.lon];
+}
+
+/* ----------------------- separazione delle sovrapposizioni --------------- */
+/**
+ * Vicino alle stazioni più mezzi condividono la stessa posizione.
+ * Si distribuiscono su una piccola corona attorno al punto, in modo
+ * stabile e ripetibile, così ognuno resta selezionabile.
+ */
+function scostamenti(lista) {
+  const gruppi = new Map();
+  for (const m of lista) {
+    const p = puntoDi(m);
+    const chiave = p[0].toFixed(4) + "," + p[1].toFixed(4);
+    if (!gruppi.has(chiave)) gruppi.set(chiave, []);
+    gruppi.get(chiave).push(m);
+  }
+  const esito = new Map();
+  for (const insieme of gruppi.values()) {
+    if (insieme.length === 1) {
+      esito.set(insieme[0].id, puntoDi(insieme[0]));
+      continue;
+    }
+    insieme.sort((a, b) => a.id < b.id ? -1 : 1);   // ordine stabile fra un giro e l'altro
+    const conBandierine = mappa.getZoom() >= LABEL_ZOOM;
+    const raggio = (conBandierine ? 15 : 8) + Math.min(insieme.length, 8) * (conBandierine ? 2.4 : 1.6);
+    insieme.forEach((m, i) => {
+      const ang = (2 * Math.PI * i) / insieme.length - Math.PI / 2;
+      const p = mappa.latLngToLayerPoint(puntoDi(m));
+      const q = mappa.layerPointToLatLng(L.point(p.x + Math.cos(ang) * raggio, p.y + Math.sin(ang) * raggio));
+      esito.set(m.id, [q.lat, q.lng]);
+    });
+  }
+  return esito;
+}
+
+/* ----------------------------- raggruppamenti ---------------------------- */
+function raggruppa(lista) {
+  const PASSO = 62;                     // lato della cella, in punti dello schermo
+  const celle = new Map();
+  for (const m of lista) {
+    const p = mappa.latLngToLayerPoint(puntoDi(m));
+    const k = Math.floor(p.x / PASSO) + ":" + Math.floor(p.y / PASSO);
+    let c = celle.get(k);
+    if (!c) { c = { x: 0, y: 0, n: 0, urbani: 0, extra: 0, mezzi: [] }; celle.set(k, c); }
+    c.x += p.x; c.y += p.y; c.n++;
+    if (m.tipo === "urbano") c.urbani++;
+    if (m.tipo === "extraurbano") c.extra++;
+    c.mezzi.push(m);
+  }
+  return [...celle.values()].map(c => {
+    const centro = mappa.layerPointToLatLng(L.point(c.x / c.n, c.y / c.n));
+    return { centro, n: c.n, urbani: c.urbani, extra: c.extra, mezzi: c.mezzi };
+  });
+}
+
+/* --------------------------- disegno sulla mappa ------------------------- */
+let insiemeDisegnato = [];
+
+function disegna() {
+  const z = mappa.getZoom();
+  const lista = mezziFiltrati();
+
+  $("#conteggio").textContent = mezzi.size;
+
+  if (z < ZOOM_GRUPPI) {
+    svuotaPunti(); svuotaBandierine();
+    disegnaGruppi(lista);
+    insiemeDisegnato = [];
+    aggiornaElenco(lista.filter(m => mappa.getBounds().contains(puntoDi(m))));
+  } else {
+    stratoGruppi.clearLayers();
+    const bordi = mappa.getBounds().pad(0.3);
+    const inVista = lista.filter(m => bordi.contains(puntoDi(m)));
+    insiemeDisegnato = inVista;
+    disegnaPunti(inVista, z);
+    aggiornaElenco(lista.filter(m => mappa.getBounds().contains(puntoDi(m))));
+  }
+}
+
+function svuotaPunti() { stratoPunti.clearLayers(); marker.clear(); }
+function svuotaBandierine() { stratoBandiere.clearLayers(); bandierine.clear(); }
+
+function disegnaGruppi(lista) {
+  stratoGruppi.clearLayers();
+  for (const g of raggruppa(lista)) {
+    if (g.n === 1) {
+      const m = g.mezzi[0];
+      const c = colore(m);
+      L.circleMarker(puntoDi(m), {
+        renderer: disegnatore, radius: 6.5, weight: 2.2,
+        color: "#ffffff", fillColor: c.pieno, fillOpacity: 1,
+        interactive: true, bubblingMouseEvents: false
+      }).on("click", () => seleziona(m.id)).addTo(stratoGruppi);
+      continue;
+    }
+    const taglia = g.n < 10 ? "p" : (g.n < 50 ? "m" : "g");
+    const classe = g.urbani && g.extra ? "misto" : (g.extra > g.urbani ? "extraurbano" : "urbano");
+    const icona = L.divIcon({
+      className: "gruppo-guscio", iconSize: null,
+      html: '<div class="gruppo ' + classe + ' ' + taglia + '" role="button" tabindex="0" ' +
+            'aria-label="' + g.n + ' mezzi in questa zona, ingrandisci per vederli">' + g.n + "</div>"
+    });
+    L.marker(g.centro, { icon: icona, keyboard: false })
+      .on("click", () => mappa.flyToBounds(L.latLngBounds(g.mezzi.map(puntoDi)).pad(0.35), { maxZoom: 14 }))
+      .addTo(stratoGruppi);
+  }
+}
+
+function colore(m) {
+  if (m.stantio) return COLORI.stantio;
+  return COLORI[m.tipo] || COLORI.altro;
+}
+
+function disegnaPunti(inVista, z) {
+  const posti = scostamenti(inVista);
+  const vivi = new Set();
+
+  for (const m of inVista) {
+    vivi.add(m.id);
+    const p = posti.get(m.id) || puntoDi(m);
+    const c = colore(m);
+    const eScelto = (m.id === scelto);
+    let pt = marker.get(m.id);
+    if (!pt) {
+      pt = L.circleMarker(p, {
+        renderer: disegnatore, radius: eScelto ? 8.5 : 6.5, weight: eScelto ? 3 : 2.2,
+        color: "#ffffff", fillColor: c.pieno, fillOpacity: 1,
+        interactive: true, bubblingMouseEvents: false
+      });
+      pt.on("click", () => seleziona(m.id));
+      pt.addTo(stratoPunti);
+      marker.set(m.id, pt);
+    } else {
+      pt.setLatLng(p);
+      // Si ridisegna soltanto quando qualcosa è davvero cambiato.
+      if (pt.options.fillColor !== c.pieno || pt._scelto !== eScelto) {
+        pt.setStyle({ fillColor: c.pieno, radius: eScelto ? 8.5 : 6.5, weight: eScelto ? 3 : 2.2 });
+      }
+    }
+    pt._scelto = eScelto;
+  }
+
+  for (const [id, pt] of marker) {
+    if (!vivi.has(id)) { stratoPunti.removeLayer(pt); marker.delete(id); }
+  }
+
+  if (z >= LABEL_ZOOM) disegnaBandierine(inVista, posti);
+  else svuotaBandierine();
+}
+
+/** Le bandierine si disegnano solo per i mezzi in vista e solo fino al limite. */
+function disegnaBandierine(inVista, posti) {
+  let candidati = inVista;
+  if (candidati.length > MAX_BANDIERINE) {
+    const centro = mappa.getCenter();
+    candidati = candidati.slice().sort((a, b) => {
+      if (a.id === scelto) return -1;
+      if (b.id === scelto) return 1;
+      const pa = puntoDi(a), pb = puntoDi(b);
+      return centro.distanceTo(pa) - centro.distanceTo(pb);
+    }).slice(0, MAX_BANDIERINE);
+  }
+  // La bandierina del mezzo selezionato resta sempre presente.
+  if (scelto && !candidati.some(m => m.id === scelto)) {
+    const s = mezzi.get(scelto);
+    if (s && passaFiltri(s)) candidati = candidati.concat([s]);
+  }
+
+  const vivi = new Set();
+  for (const m of candidati) {
+    vivi.add(m.id);
+    const p = posti.get(m.id) || puntoDi(m);
+    const classi = "bandierina " + (m.stantio ? "stantia" : m.tipo) + (m.id === scelto ? " scelta" : "");
+    let b = bandierine.get(m.id);
+    if (!b) {
+      b = L.marker(p, {
+        icon: L.divIcon({ className: "bandierina-guscio", iconSize: null,
+          html: '<span class="' + classi + '">' + escapaHtml(m.sigla) + "</span>" }),
+        keyboard: false, zIndexOffset: m.id === scelto ? 1000 : 0, riseOnHover: true
+      });
+      b.on("click", () => seleziona(m.id));
+      b.addTo(stratoBandiere);
+      bandierine.set(m.id, b);
+      b._classi = classi; b._sigla = m.sigla;
+    } else {
+      b.setLatLng(p);
+      if (b._classi !== classi || b._sigla !== m.sigla) {
+        const el = b.getElement() && b.getElement().firstChild;
+        if (el) { el.className = classi; el.textContent = m.sigla; }
+        else b.setIcon(L.divIcon({ className: "bandierina-guscio", iconSize: null,
+              html: '<span class="' + classi + '">' + escapaHtml(m.sigla) + "</span>" }));
+        b._classi = classi; b._sigla = m.sigla;
+        b.setZIndexOffset(m.id === scelto ? 1000 : 0);
+      }
+    }
+  }
+  for (const [id, b] of bandierine) {
+    if (!vivi.has(id)) { stratoBandiere.removeLayer(b); bandierine.delete(id); }
+  }
+}
+
+/** Aggiornamento leggero delle sole posizioni, durante il passaggio animato. */
+function posiziona() {
+  if (mappa.getZoom() < ZOOM_GRUPPI || insiemeDisegnato.length === 0) return;
+  const posti = scostamenti(insiemeDisegnato);
+  for (const m of insiemeDisegnato) {
+    const p = posti.get(m.id) || puntoDi(m);
+    const pt = marker.get(m.id); if (pt) pt.setLatLng(p);
+    const b = bandierine.get(m.id); if (b) b.setLatLng(p);
+  }
+  if (seguito) {
+    const m = mezzi.get(seguito);
+    if (m) mappa.panTo(puntoDi(m), { animate: !menoMoto, duration: 0.5, noMoveStart: true });
+  }
+}
+
+function escapaHtml(s) {
+  return String(s).replace(/[&<>"']/g, ch =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
+}
+
+/* ========================= elenco laterale =============================== */
+const MAX_ELENCO = 120;
+
+function aggiornaElenco(inVista) {
+  const ul = $("#elenco"), vuoto = $("#vuoto");
+  $("#conteggio-elenco").textContent = inVista.length;
+
+  if (inVista.length === 0) {
+    ul.innerHTML = "";
+    vuoto.style.display = "block";
+    vuoto.textContent = mezzi.size === 0
+      ? "Nessuna posizione disponibile in questo momento."
+      : "Nessun mezzo in questa zona con i filtri scelti.";
+    return;
+  }
+  vuoto.style.display = "none";
+
+  const ordinati = inVista.slice().sort((a, b) =>
+    a.sigla.localeCompare(b.sigla, "it", { numeric: true }) || a.id.localeCompare(b.id));
+  const parti = [];
+  for (const m of ordinati.slice(0, MAX_ELENCO)) {
+    parti.push(
+      '<li><button class="voce' + (m.stantio ? " stantia" : "") + '" data-id="' + escapaHtml(m.id) + '"' +
+      (m.id === scelto ? ' aria-current="true"' : "") + '>' +
+        '<span class="sigla ' + m.tipo + '">' + escapaHtml(m.sigla) + "</span>" +
+        '<span class="testo">' +
+          '<span class="dove">' + escapaHtml(m.destinazione || m.linea || "Direzione non indicata") + "</span>" +
+          '<span class="quando">' + (m.stantio ? "Non aggiornato, " : "") + eta(m.ricevuto) + "</span>" +
+        "</span>" +
+      "</button></li>");
+  }
+  if (ordinati.length > MAX_ELENCO) {
+    parti.push('<li><p style="font-size:12px;color:var(--tenue);padding:4px 2px;margin:0">' +
+      "Altri " + (ordinati.length - MAX_ELENCO) + " mezzi in questa zona: ingrandisci per vederli in elenco.</p></li>");
+  }
+  ul.innerHTML = parti.join("");
+}
+
+$("#elenco").addEventListener("click", (e) => {
+  const b = e.target.closest(".voce");
+  if (b) seleziona(b.dataset.id, true);
+});
+
+/* ========================= scheda del mezzo ============================== */
+function seleziona(id, daElenco) {
+  scelto = id;
+  const m = mezzi.get(id);
+  if (!m) { chiudiScheda(); return; }
+  if (daElenco) mappa.setView(puntoDi(m), Math.max(mappa.getZoom(), LABEL_ZOOM), { animate: !menoMoto });
+  aggiornaScheda();
+  disegna();
+  if (window.innerWidth <= 820) chiudiPannello();
+}
+
+function aggiornaScheda() {
+  const s = $("#scheda");
+  if (!scelto) { s.classList.remove("visibile"); return; }
+  const m = mezzi.get(scelto);
+  if (!m) { chiudiScheda(); return; }
+
+  s.classList.add("visibile");
+  $("#scheda-testa").className = "testa " + m.tipo;
+  $("#scheda-linea").textContent = m.sigla;
+  $("#scheda-destinazione").textContent = m.destinazione || m.direzione || "Non indicata";
+
+  const righe = [];
+  const aggiungi = (etichetta, valore) => {
+    if (valore) righe.push("<dt>" + escapaHtml(etichetta) + "</dt><dd>" + escapaHtml(valore) + "</dd>");
+  };
+  aggiungi("Linea", m.linea || m.sigla);
+  aggiungi("Servizio", m.tipo === "urbano" ? "Urbano"
+    : m.tipo === "extraurbano" ? "Extraurbano"
+    : "Non classificato dal servizio" + (m.tipoGrezzo ? " (codice " + m.tipoGrezzo + ")" : ""));
+  aggiungi("Mezzo", m.veicolo || "Identificativo non fornito");
+  aggiungi("Corsa", m.corsa);
+  aggiungi("Partenza", m.partenza);
+  aggiungi("Arrivo previsto", m.arrivo);
+  aggiungi("Ripartenza prevista", m.ripartenza);
+  aggiungi("Orario della corsa", m.orarioCorsa);
+  righe.push("<dt>Posizione ricevuta</dt><dd>" + ora(m.ricevuto) + ", " + eta(m.ricevuto) + "</dd>");
+  $("#scheda-dati").innerHTML = righe.join("");
+
+  const nota = $("#nota-scheda");
+  const avvertenze = [];
+  if (m.stantio) avvertenze.push("Posizione non aggiornata: il servizio non rileva questo mezzo da più di due minuti.");
+  avvertenze.push("L'ora indicata è quella di ricezione del dato, non un orario fornito dal navigatore satellitare del mezzo.");
+  nota.textContent = avvertenze.join(" ");
+  nota.classList.add("visibile");
+
+  const b = $("#segui");
+  const attivo = (seguito === m.id);
+  b.setAttribute("aria-pressed", attivo ? "true" : "false");
+  b.textContent = attivo ? "Smetti di seguire" : "Segui questo autobus";
+}
+
+function chiudiScheda() {
+  scelto = null; seguito = null;
+  $("#scheda").classList.remove("visibile");
+  disegna();
+}
+
+$("#chiudi-scheda").addEventListener("click", chiudiScheda);
+
+$("#segui").addEventListener("click", () => {
+  if (!scelto) return;
+  seguito = (seguito === scelto) ? null : scelto;
+  if (seguito) {
+    const m = mezzi.get(seguito);
+    if (m) mappa.setView(puntoDi(m), Math.max(mappa.getZoom(), LABEL_ZOOM), { animate: !menoMoto });
+    avvisa("La mappa segue il mezzo selezionato");
+  }
+  aggiornaScheda();
+});
+
+/* ============================== filtri =================================== */
+document.querySelectorAll(".filtro").forEach(b => {
+  b.addEventListener("click", () => {
+    const t = b.dataset.tipo;
+    filtri[t] = !filtri[t];
+    b.setAttribute("aria-pressed", filtri[t] ? "true" : "false");
+    disegna();
+  });
+});
+
+const campoLinea = $("#cerca-linea");
+campoLinea.addEventListener("input", () => {
+  filtri.linea = campoLinea.value.trim();
+  campoLinea.closest(".campo").classList.toggle("pieno", !!campoLinea.value);
+  disegna();
+});
+
+document.querySelectorAll(".pulisci").forEach(b => {
+  b.addEventListener("click", () => {
+    const campo = document.getElementById(b.dataset.svuota);
+    campo.value = "";
+    campo.dispatchEvent(new Event("input", { bubbles: true }));
+    campo.focus();
+  });
+});
+
+/* ==================== ricerca di località e fermate ====================== */
+const campoLuogo = $("#cerca-luogo"), listaSugg = $("#suggerimenti");
+
+/** Il catalogo completo delle fermate si scarica solo al primo bisogno. */
+async function caricaCatalogo() {
+  if (catalogo || catalogoInCaricamento) return;
+  catalogoInCaricamento = true;
+  try {
+    const r = await conAttesa(BASE_FERMATE, 25000);
+    if (!r.ok) throw new Error("risposta " + r.status);
+    const d = await r.json();
+    catalogo = d.features
+      .filter(f => f.properties && f.properties.__type === "stop")
+      .map(f => ({
+        nome: f.properties.name || "",
+        luogo: f.properties.location || "",
+        codice: f.properties.code || "",
+        lat: f.geometry.coordinates[1],
+        lon: f.geometry.coordinates[0]
+      }));
+    console.info("[catalogo] fermate caricate: " + catalogo.length);
+    if (campoLuogo.value.trim().length >= 2) cerca(campoLuogo.value.trim());
+  } catch (e) {
+    catalogo = [];
+    console.warn("[catalogo] non disponibile: " + e.message);
+  } finally {
+    catalogoInCaricamento = false;
+  }
+}
+
+function cerca(ago) {
+  const q = ago.toLowerCase();
+  const esiti = [];
+
+  for (const [nome, lat, lon, n] of LOCALITA) {
+    if (nome.toLowerCase().includes(q)) {
+      esiti.push({ titolo: nome, sotto: n + (n === 1 ? " fermata" : " fermate"), lat, lon, zoom: 13 });
+    }
+    if (esiti.length >= 6) break;
+  }
+  if (catalogo) {
+    for (const f of catalogo) {
+      if (esiti.length >= 12) break;
+      if (f.nome.toLowerCase().includes(q) || f.codice.toLowerCase() === q) {
+        esiti.push({ titolo: f.nome, sotto: "Fermata " + f.codice, lat: f.lat, lon: f.lon, zoom: 16 });
+      }
+    }
+  }
+
+  if (!esiti.length) {
+    listaSugg.innerHTML = '<li><button type="button" disabled style="color:var(--tenue)">' +
+      (catalogoInCaricamento ? "Ricerca delle fermate in corso" : "Nessun risultato") + "</button></li>";
+  } else {
+    listaSugg.innerHTML = esiti.map(e =>
+      '<li role="option"><button type="button" data-lat="' + e.lat + '" data-lon="' + e.lon + '" data-zoom="' + e.zoom + '">' +
+      '<span class="luogo">' + escapaHtml(e.titolo) + "</span><br>" +
+      '<span class="dettaglio">' + escapaHtml(e.sotto) + "</span></button></li>").join("");
+  }
+  listaSugg.classList.add("aperto");
+  campoLuogo.setAttribute("aria-expanded", "true");
+}
+
+function chiudiSuggerimenti() {
+  listaSugg.classList.remove("aperto");
+  campoLuogo.setAttribute("aria-expanded", "false");
+}
+
+campoLuogo.addEventListener("input", () => {
+  const v = campoLuogo.value.trim();
+  campoLuogo.closest(".campo").classList.toggle("pieno", !!campoLuogo.value);
+  if (v.length < 2) { chiudiSuggerimenti(); return; }
+  caricaCatalogo();
+  cerca(v);
+});
+
+listaSugg.addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-lat]");
+  if (!b) return;
+  mappa.setView([parseFloat(b.dataset.lat), parseFloat(b.dataset.lon)], parseInt(b.dataset.zoom, 10), { animate: !menoMoto });
+  chiudiSuggerimenti();
+  if (window.innerWidth <= 820) chiudiPannello();
+});
+
+campoLuogo.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") { chiudiSuggerimenti(); return; }
+  if (e.key === "ArrowDown") {
+    const primo = listaSugg.querySelector("button:not([disabled])");
+    if (primo) { e.preventDefault(); primo.focus(); }
+  }
+});
+listaSugg.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") { chiudiSuggerimenti(); campoLuogo.focus(); }
+});
+document.addEventListener("click", (e) => {
+  if (!e.target.closest("#campo-luogo") && !e.target.closest("#suggerimenti")) chiudiSuggerimenti();
+});
+
+/* ======================= comandi della mappa ============================= */
+$("#tutta-regione").addEventListener("click", () => {
+  seguito = null;
+  aggiornaScheda();
+  mappa.flyToBounds(CONFINI, { padding: [12, 12], duration: menoMoto ? 0 : 0.7 });
+});
+
+$("#schermo-intero").addEventListener("click", () => {
+  const el = document.documentElement;
+  if (!document.fullscreenElement) {
+    (el.requestFullscreen || el.webkitRequestFullscreen || (() => {})).call(el);
+  } else {
+    (document.exitFullscreen || document.webkitExitFullscreen || (() => {})).call(document);
+  }
+});
+document.addEventListener("fullscreenchange", () => {
+  $("#schermo-intero").setAttribute("aria-pressed", document.fullscreenElement ? "true" : "false");
+  setTimeout(() => mappa.invalidateSize(), 220);
+});
+
+$("#aggiorna").addEventListener("click", () => {
+  avvisa("Aggiornamento richiesto");
+  aggiorna(true);
+});
+
+/* -------------------- pannello sugli schermi piccoli --------------------- */
+const velo = $("#velo");
+velo.removeAttribute("hidden");
+function apriPannello() {
+  $("#pannello").classList.add("aperto");
+  velo.classList.add("visibile");
+  $("#apri-pannello").setAttribute("aria-expanded", "true");
+}
+function chiudiPannello() {
+  $("#pannello").classList.remove("aperto");
+  velo.classList.remove("visibile");
+  $("#apri-pannello").setAttribute("aria-expanded", "false");
+}
+$("#apri-pannello").addEventListener("click", () => {
+  $("#pannello").classList.contains("aperto") ? chiudiPannello() : apriPannello();
+});
+velo.addEventListener("click", chiudiPannello);
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  if ($("#pannello").classList.contains("aperto")) chiudiPannello();
+  else if (scelto) chiudiScheda();
+});
+
+/* ------------------------ reazioni della mappa --------------------------- */
+let attesaDisegno = null;
+function disegnaFraPoco() {
+  clearTimeout(attesaDisegno);
+  attesaDisegno = setTimeout(disegna, 90);
+}
+mappa.on("zoomend", disegna);
+mappa.on("moveend", disegnaFraPoco);
+
+/* --------- sospensione a scheda nascosta e ripresa al ritorno ------------ */
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) {
+    clearTimeout(timer);
+    console.info("[ciclo] scheda nascosta: aggiornamenti sospesi");
+  } else {
+    console.info("[ciclo] scheda di nuovo visibile: aggiornamenti ripresi");
+    const vecchio = !ultimoEsito || (Date.now() - ultimoEsito) > INTERVALLO_MS;
+    if (vecchio) aggiorna(true); else riprogramma();
+  }
+});
+window.addEventListener("online", () => { fallimenti = 0; aggiorna(true); });
+window.addEventListener("offline", () => segnala("guasto", "Connessione assente", "Senza rete"));
+
+/* ------------------------------- avvio ----------------------------------- */
+(async function avvio() {
+  segnala("attesa", "Ricerca delle posizioni", "Ricerca");
+  console.info("Autobus in tempo reale in Friuli Venezia Giulia");
+  console.info("Fermate selezionate per l'interrogazione: " + FERMATE.length + " su 8506 del catalogo ufficiale");
+  console.info("Soglia delle bandierine (LABEL_ZOOM): livello " + LABEL_ZOOM);
+  await aggiorna(true);
+  // Ogni mezzo minuto si rinfrescano le età mostrate, senza nuove richieste.
+  setInterval(() => { invecchia(); disegna(); aggiornaScheda(); }, 30000);
+})();
+</script>
+</body>
+</html>
