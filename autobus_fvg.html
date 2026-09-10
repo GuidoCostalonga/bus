@@ -404,12 +404,17 @@ function aggregatoreDaIndirizzo() {
   return null;
 }
 
+// L'aggregatore sulla macchina di chi guarda si cerca solo quando la pagina
+// e' aperta in locale. Dal sito pubblicato sarebbe un tentativo inutile, che i
+// browser recenti segnalano come accesso alla rete privata.
+const IN_LOCALE = ["localhost", "127.0.0.1", "[::1]", ""].includes(location.hostname);
+
 // Indirizzi provati nell'ordine: quello indicato, poi quelli locali.
 const AGGREGATORI = [
   aggregatoreDaIndirizzo(),
   AGGREGATORE_REMOTO,
   "./api/mezzi",
-  "http://127.0.0.1:8080/api/mezzi"
+  IN_LOCALE ? "http://127.0.0.1:8080/api/mezzi" : null
 ].filter(Boolean);
 
 // Servizio ufficiale delle corse monitorate a una fermata.
