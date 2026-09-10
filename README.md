@@ -10,26 +10,45 @@ servizio regionale rende disponibile la posizione.
 |---|---|
 | `autobus_fvg.html` | L'applicazione completa: struttura, grafica e programma in un unico file. |
 | `aggregatore_tplfvg.js` | Servizio minimo che raccoglie le posizioni da tutta la rete e le offre alla pagina. |
+| `Avvia_su_Windows.bat` | Avvia tutto con un doppio clic su Windows e apre la pagina nel browser. |
+| `Avvia_su_Mac.command` | Lo stesso, su Mac. |
 
 ## Come si usa
 
-### Modo consigliato: pagina più aggregatore
+### Modo più semplice: un doppio clic
 
-Serve Node.js. I due file devono stare nella stessa cartella.
+Tutti i file devono stare **nella stessa cartella**. Poi:
+
+- **Windows**: doppio clic su `Avvia_su_Windows.bat`
+- **Mac**: doppio clic su `Avvia_su_Mac.command`
+
+Si apre una finestra nera e, dopo qualche secondo, la pagina compare da sola nel
+browser. Quella finestra va lasciata aperta: è il programma che raccoglie le
+posizioni. Per fermare tutto basta chiuderla.
+
+Se Node.js non è installato, il file di avvio lo dice e indica dove scaricarlo:
+https://nodejs.org, versione LTS, installazione normale. Va fatto una volta sola.
+
+La prima volta su Mac il sistema può rifiutarsi di eseguire il file perché
+scaricato da internet. Si risolve così: clic destro sul file, poi «Apri», poi di
+nuovo «Apri» nella finestra che compare. Solo la prima volta.
+
+### Modo manuale, da terminale
 
 ```
 node aggregatore_tplfvg.js
 ```
 
-Poi si apre `http://127.0.0.1:8080/` nel browser. La pagina riconosce da sola
-l'aggregatore e lo usa.
+Poi si apre `http://127.0.0.1:8080/`.
 
-### Modo rapido: solo la pagina
+### Solo per guardare l'interfaccia
 
-Si apre `autobus_fvg.html` con un doppio clic. La pagina non trova
-l'aggregatore e interroga direttamente il servizio TPL FVG, con ventiquattro
-fermate per giro invece delle novanta dell'aggregatore: la copertura è quindi
-molto più stretta e cresce lentamente, giro dopo giro.
+Doppio clic su `autobus_fvg.html`. Si apre nel browser senza installare niente:
+funzionano mappa, comandi e ricerca di località e fermate. Per gli autobus,
+però, la pagina interroga il servizio direttamente, con ventiquattro fermate per
+giro invece delle novanta dell'aggregatore: la copertura è molto più stretta e
+cresce lentamente. Non è detto inoltre che il browser consenta quelle chiamate
+dirette, cosa che non è stato possibile verificare.
 
 ## Perché serve un aggregatore
 

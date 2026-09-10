@@ -272,6 +272,22 @@ const server = http.createServer((req, res) => {
   res.end("Non trovato");
 });
 
+/** Apre la pagina nel browser predefinito. Se non riesce, lo dice e prosegue. */
+function apriBrowser(indirizzo) {
+  const { spawn } = require("child_process");
+  const [comando, argomenti] =
+      process.platform === "win32"  ? ["cmd", ["/c", "start", "", indirizzo]]
+    : process.platform === "darwin" ? ["open", [indirizzo]]
+    :                                 ["xdg-open", [indirizzo]];
+  try {
+    const p = spawn(comando, argomenti, { stdio: "ignore", detached: true });
+    p.on("error", () => console.log("Apra a mano questo indirizzo nel browser: " + indirizzo));
+    p.unref();
+  } catch (e) {
+    console.log("Apra a mano questo indirizzo nel browser: " + indirizzo);
+  }
+}
+
 /* --------------------------------- avvio ---------------------------------- */
 (async function avvio() {
   console.log("Aggregatore delle posizioni TPL FVG");
@@ -282,8 +298,11 @@ const server = http.createServer((req, res) => {
     console.error("L'aggregatore resta in ascolto e riproverà al primo giro utile.");
   }
   server.listen(CONF.porta, "127.0.0.1", () => {
-    console.log("In ascolto su http://127.0.0.1:" + CONF.porta + "/");
-    console.log("Posizioni raccolte: http://127.0.0.1:" + CONF.porta + "/api/mezzi");
+    const indirizzo = "http://127.0.0.1:" + CONF.porta + "/";
+    console.log("In ascolto su " + indirizzo);
+    console.log("Posizioni raccolte: " + indirizzo + "api/mezzi");
+    console.log("Per fermare tutto: chiuda questa finestra, oppure prema Ctrl+C.");
+    if (process.env.APRI_BROWSER === "1") apriBrowser(indirizzo);
   });
   const lavora = async () => {
     if (!fermateP1.length && !fermateP2.length) {
